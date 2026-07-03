@@ -1,0 +1,299 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  credits       Int       @default(10)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  projects       Project[]
+  socialAccounts SocialAccount[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceVideos SourceVideo[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+enum VideoStatus {
+  PENDING
+  UPLOADING
+  IMPORTING
+  EXTRACTING_AUDIO
+  TRANSCRIBING
+  ANALYZING
+  COMPLETED
+  FAILED
+}
+
+enum SourceType {
+  UPLOAD
+  URL
+}
+
+enum SourcePlatform {
+  YOUTUBE
+  TWITCH
+  KICK
+  TIKTOK
+  INSTAGRAM
+  FACEBOOK
+  DIRECT_URL
+  OTHER
+}
+
+model SourceVideo {
+  id             String          @id @default(cuid())
+  projectId      String
+  title          String?
+  sourceUrl      String?         @map("originalUrl")
+  sourceType     SourceType      @default(UPLOAD)
+  sourcePlatform SourcePlatform?
+  filePath       String?
+  audioPath      String?
+  fileSize       BigInt?
+  duration       Float?
+  language       String?
+  thumbnailUrl   String?
+  // Lives >= LONG_LIVE_MODE_HOURS (env, default 8h) — drives chunked
+  // per-chunk analysis and a higher clip suggestion cap. Per-chunk
+  // transcription/analysis progress lives in ProcessingJob, not here.
+  isLongLive     Boolean         @default(false)
+  status         VideoStatus     @default(PENDING)
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transcriptSegments TranscriptSegment[]
+  suggestedClips     SuggestedClip[]
+  processingJobs     ProcessingJob[]
+
+  @@index([projectId])
+  @@map("source_videos")
+}
+
+model TranscriptSegment {
+  id            String  @id @default(cuid())
+  sourceVideoId String
+  startTime     Float
+  endTime       Float
+  text          String  @db.Text
+  confidence    Float?
+  chunkIndex    Int     @default(0)
+
+  sourceVideo SourceVideo @relation(fields: [sourceVideoId], references: [id], onDelete: Cascade)
+
+  @@index([sourceVideoId])
+  @@map("transcript_segments")
+}
+
+enum ClipStatus {
+  SUGGESTED
+  SELECTED
+  RENDERING
+  RENDERED
+  FAILED
+}
+
+enum ClipEmotion {
+  POLEMICA
+  HUMOR
+  SURPRESA
+  ENSINO
+  HISTORIA
+  OPINIAO_FORTE
+  REVELACAO
+  CONFLITO
+  FRASE_DE_IMPACTO
+}
+
+model SuggestedClip {
+  id            String      @id @default(cuid())
+  sourceVideoId String
+  title         String
+  startTime     Float
+  endTime       Float
+  viralScore    Int
+  hook          String?     @db.Text
+  reason        String      @db.Text
+  emotion       ClipEmotion
+  caption       String?
+  description   String?     @db.Text
+  hashtags      String[]
+  status        ClipStatus  @default(SUGGESTED)
+  errorMessage  String?
+  // Estado do editor no navegador (overlays de texto, legendas palavra-a-
+  // palavra, efeitos, cor de destaque etc). Um único blob JSON — não precisa
+  // de tabelas relacionais porque é sempre lido/escrito inteiro pelo editor.
+  // Formato: EditorState (ver src/types/index.ts). Null = clipe ainda não
+  // foi aberto no editor, renderClip cai no comportamento clean/captioned de sempre.
+  editorState   Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  sourceVideo   SourceVideo    @relation(fields: [sourceVideoId], references: [id], onDelete: Cascade)
+  renderedClips RenderedClip[]
+
+  @@index([sourceVideoId])
+  @@map("suggested_clips")
+}
+
+enum ClipFormat {
+  ORIGINAL
+  VERTICAL_9_16
+  SQUARE_1_1
+  HORIZONTAL_16_9
+  FEED_4_5
+}
+
+enum FitMode {
+  CONTAIN
+  COVER
+  BLUR_BACKGROUND
+}
+
+model RenderedClip {
+  id              String     @id @default(cuid())
+  suggestedClipId String
+  filePath        String?
+  fileSize        BigInt?
+  format          ClipFormat @default(ORIGINAL)
+  fitMode         FitMode    @default(CONTAIN)
+  duration        Float?
+  createdAt       DateTime   @default(now())
+
+  suggestedClip SuggestedClip @relation(fields: [suggestedClipId], references: [id], onDelete: Cascade)
+
+  @@index([suggestedClipId])
+  @@map("rendered_clips")
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum JobType {
+  EXTRACT_AUDIO
+  TRANSCRIBE
+  ANALYZE_CLIPS
+  RENDER_CLIP
+}
+
+model ProcessingJob {
+  id            String    @id @default(cuid())
+  sourceVideoId String
+  type          JobType
+  status        JobStatus @default(QUEUED)
+  progress      Int       @default(0)
+  errorMessage  String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sourceVideo SourceVideo @relation(fields: [sourceVideoId], references: [id], onDelete: Cascade)
+
+  @@index([sourceVideoId])
+  @@map("processing_jobs")
+}
+
+enum SocialProvider {
+  YOUTUBE
+  INSTAGRAM
+}
+
+// Conta de rede social conectada via OAuth para publicação futura de clipes.
+// accessToken/refreshToken ficam cifrados em repouso (AES-256-GCM, ver
+// src/lib/crypto.ts) — nunca gravar token em texto puro nem logar o valor.
+model SocialAccount {
+  id                String         @id @default(cuid())
+  userId            String
+  provider          SocialProvider
+  providerAccountId String // ID da conta na plataforma (ex.: YouTube channel ID, Instagram business account ID)
+  accountName       String? // Nome/título exibido (ex.: título do canal, @usuário do Instagram)
+  accountAvatar     String? // URL da thumbnail/avatar
+  accessToken       String         @db.Text // cifrado
+  refreshToken      String?        @db.Text // cifrado
+  scope             String?
+  expiresAt         DateTime?
+  // Dados extras específicos da plataforma que não cabem nas colunas acima.
+  // Para INSTAGRAM: { facebookPageId, facebookPageName } — necessários para
+  // publicar via Graph API (o token salvo é o Page Access Token da página
+  // dona da conta do Instagram).
+  metadata          Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("social_accounts")
+}

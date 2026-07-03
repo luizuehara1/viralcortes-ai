@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+uploads
+clips
+.env
+.env.local
+.env.*.local
+.git
+.gitignore
+*.log
+npm-debug.log*
+*.tsbuildinfo
+prisma/migrations
+README.md

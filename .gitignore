@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Uploads e clips (não versionar arquivos de vídeo)
+uploads/
+clips/
+
+# Prisma
+prisma/migrations/
+
+# Misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
