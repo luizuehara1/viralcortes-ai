@@ -65,7 +65,17 @@ export function buildInstagramAuthUrl(state: string): string {
 interface InstagramShortLivedToken {
   access_token: string
   user_id: string
-  permissions?: string
+  // A API retorna isso como array de strings (ex.: ["instagram_business_basic",
+  // "instagram_business_content_publish"]), não como string única — apesar
+  // de alguma documentação sugerir o contrário.
+  permissions?: string | string[]
+}
+
+// Normaliza permissions (array ou string, dependendo da resposta) pro
+// formato de string única que a coluna `scope` do banco espera.
+export function normalizeScopeString(permissions: string | string[] | undefined, fallback: string | undefined): string {
+  if (Array.isArray(permissions)) return permissions.join(',')
+  return permissions || fallback || ''
 }
 
 // O endpoint de troca de code do Instagram Login (api.instagram.com) às

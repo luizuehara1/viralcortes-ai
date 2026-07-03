@@ -7,6 +7,7 @@ import {
   exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
   fetchOwnInstagramAccount,
+  normalizeScopeString,
   InstagramConfigError,
 } from '@/lib/instagram'
 import { getAppUrl } from '@/lib/app-url'
@@ -73,6 +74,9 @@ export async function GET(req: NextRequest) {
     step = 'salvar_conta'
     const userId = (session.user as any).id
     const expiresAt = longLived.expires_in ? new Date(Date.now() + longLived.expires_in * 1000) : null
+    // A API retorna "permissions" como array de strings — a coluna `scope`
+    // no banco é uma única string, então normalizamos antes de gravar.
+    const scopeString = normalizeScopeString(shortLived.permissions, process.env.INSTAGRAM_SCOPES)
 
     await prisma.socialAccount.upsert({
       where: { userId_provider: { userId, provider: 'INSTAGRAM' } },
@@ -85,7 +89,7 @@ export async function GET(req: NextRequest) {
         accessToken: encrypt(longLived.access_token),
         // Este fluxo não tem refresh_token — o próprio token de longa
         // duração é renovado (não substituído) antes de expirar.
-        scope: shortLived.permissions || process.env.INSTAGRAM_SCOPES,
+        scope: scopeString,
         expiresAt,
       },
       update: {
@@ -93,7 +97,7 @@ export async function GET(req: NextRequest) {
         accountName: instagram.accountName,
         accountAvatar: instagram.profilePictureUrl,
         accessToken: encrypt(longLived.access_token),
-        scope: shortLived.permissions || process.env.INSTAGRAM_SCOPES,
+        scope: scopeString,
         expiresAt,
       },
     })
