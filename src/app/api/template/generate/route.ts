@@ -7,12 +7,29 @@ import {
   detectBlueRegions,
   detectMediaType,
 } from '@/lib/template-compositor'
-import { cropVideoRegion } from '@/lib/ffmpeg'
+import { cropVideoRegion, getVideoMetadata } from '@/lib/ffmpeg'
 import { parseMultipart } from '@/lib/multipart'
 import { getUploadDir } from '@/lib/utils'
+import { prisma } from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
+
+// Registra o resultado no banco (TemplateOutput) pra poder ser editado/
+// legendado e agendado pro Instagram depois — antes só existia como arquivo
+// solto em disco.
+async function persistTemplateOutput(userId: string, outputPath: string, mediaType: 'image' | 'video') {
+  const duration = mediaType === 'video' ? (await getVideoMetadata(outputPath)).duration : null
+  const created = await prisma.templateOutput.create({
+    data: {
+      userId,
+      filePath: outputPath,
+      mediaType: mediaType === 'video' ? 'VIDEO' : 'IMAGE',
+      duration,
+    },
+  })
+  return created.id
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -58,6 +75,7 @@ function parseFacecamRegion(raw: string | undefined): FacecamRegionInput | null 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const userId = (session.user as any).id
 
   let fields: Record<string, string>
   let mediaTempPath: string | null = null
@@ -149,11 +167,13 @@ export async function POST(req: NextRequest) {
         outputPath,
         { trimSeconds }
       )
+      const templateOutputId = await persistTemplateOutput(userId, outputPath, result.mediaType)
       return NextResponse.json(
         {
           outputUrl: `/api/template/file/${templateId}/${path.basename(outputPath)}`,
           mediaType: result.mediaType,
           region: result.region,
+          templateOutputId,
         },
         { status: 201 }
       )
@@ -173,11 +193,13 @@ export async function POST(req: NextRequest) {
       regionIndex,
       trimSeconds,
     })
+    const templateOutputId = await persistTemplateOutput(userId, outputPath, result.mediaType)
     return NextResponse.json(
       {
         outputUrl: `/api/template/file/${templateId}/${path.basename(outputPath)}`,
         mediaType: result.mediaType,
         region: result.region,
+        templateOutputId,
       },
       { status: 201 }
     )

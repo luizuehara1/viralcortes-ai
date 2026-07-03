@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   TrendingUp, Clock, Download, Play, Sparkles, Copy, Check,
-  Loader2, ChevronDown, ChevronUp, Plus, Share2, Pencil
+  Loader2, ChevronDown, ChevronUp, Plus, Share2, Pencil, CalendarClock
 } from 'lucide-react'
 import { EMOTION_LABELS, EMOTION_COLORS, CLIP_FORMAT_LABELS } from '@/types'
 import { formatTimeCode, formatDuration, viralScoreColor, viralScoreBg } from '@/lib/utils'
 import type { ClipEmotion, ClipStatus, ClipFormat, FitMode } from '@/types'
 import { FormatPickerModal } from './format-picker-modal'
 import { ExportModal } from './export-modal'
+import { ScheduleModal } from '@/components/social/schedule-modal'
 
 interface RenderedClip {
   id: string
@@ -51,6 +52,7 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
   const [error, setError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
   const duration = clip.endTime - clip.startTime
 
@@ -127,6 +129,10 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  // Reels do Instagram pede vertical — se o clipe tem uma renderização
+  // 9:16, agenda essa; senão cai pra primeira renderização disponível.
+  const scheduleTarget = renderedClips.find((r) => r.format === 'VERTICAL_9_16') || renderedClips[0]
 
   return (
     <div className={`glass rounded-2xl overflow-hidden transition-all duration-200 border ${
@@ -266,6 +272,15 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
               <Plus className="w-3.5 h-3.5" />
               Gerar outro formato
             </button>
+            {scheduleTarget && (
+              <button
+                onClick={() => setScheduleOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+              >
+                <CalendarClock className="w-4 h-4" />
+                Agendar no Instagram
+              </button>
+            )}
           </div>
         ) : status === 'FAILED' ? (
           <button
@@ -293,6 +308,15 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
           hashtags={clip.hashtags}
           renderedClips={renderedClips}
           onClose={() => setExportOpen(false)}
+        />
+      )}
+
+      {scheduleOpen && scheduleTarget && (
+        <ScheduleModal
+          sourceType="CLIP"
+          sourceId={scheduleTarget.id}
+          defaultCaption={clip.caption || undefined}
+          onClose={() => setScheduleOpen(false)}
         />
       )}
     </div>

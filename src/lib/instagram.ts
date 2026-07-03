@@ -201,3 +201,115 @@ export async function fetchInstagramAccountInfo(instagramUserId: string, accessT
     mediaCount: data.media_count ?? null,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Content Publishing API (Reels) — publica um vídeo já hospedado numa URL
+// pública (video_url) na conta do Instagram conectada. Fluxo em 2 passos:
+// 1. Cria um "container" de mídia (fica em processamento no lado da Meta).
+// 2. Espera o container ficar FINISHED (poll) e então publica de fato.
+//
+// Limites da API (documentados pela Meta, não impostos por este código):
+// - Até 25 publicações por conta do Instagram em uma janela de 24h.
+// - O container expira em 24h se nunca for publicado.
+// ---------------------------------------------------------------------------
+
+export interface CreateContainerResult {
+  containerId: string
+}
+
+// media_type=REELS é o único suportado aqui — publicação de feed/story fica
+// fora de escopo por ora (não solicitado).
+export async function createReelsContainer(
+  instagramUserId: string,
+  accessToken: string,
+  videoUrl: string,
+  caption: string
+): Promise<CreateContainerResult> {
+  const params = new URLSearchParams({
+    media_type: 'REELS',
+    video_url: videoUrl,
+    caption,
+    access_token: accessToken,
+  })
+  const res = await fetch(`${IG_GRAPH_BASE}/${instagramUserId}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Falha ao criar container de mídia (status ${res.status}): ${body.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  if (!data.id) {
+    throw new Error('Resposta inesperada do Instagram ao criar container de mídia (sem id).')
+  }
+  return { containerId: data.id }
+}
+
+// Valores documentados: EXPIRED, ERROR, FINISHED, IN_PROGRESS, PUBLISHED.
+export type ContainerStatusCode = 'EXPIRED' | 'ERROR' | 'FINISHED' | 'IN_PROGRESS' | 'PUBLISHED'
+
+export interface ContainerStatus {
+  statusCode: ContainerStatusCode
+  statusText?: string
+}
+
+export async function getContainerStatus(containerId: string, accessToken: string): Promise<ContainerStatus> {
+  const params = new URLSearchParams({ fields: 'status_code,status', access_token: accessToken })
+  const res = await fetch(`${IG_GRAPH_BASE}/${containerId}?${params.toString()}`)
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Falha ao consultar status do container (status ${res.status}): ${body.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  return { statusCode: data.status_code, statusText: data.status }
+}
+
+export interface PublishResult {
+  instagramMediaId: string
+}
+
+// Só deve ser chamado depois que getContainerStatus retornar FINISHED —
+// publicar um container ainda IN_PROGRESS falha do lado da Meta.
+export async function publishContainer(
+  instagramUserId: string,
+  containerId: string,
+  accessToken: string
+): Promise<PublishResult> {
+  const params = new URLSearchParams({ creation_id: containerId, access_token: accessToken })
+  const res = await fetch(`${IG_GRAPH_BASE}/${instagramUserId}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Falha ao publicar mídia (status ${res.status}): ${body.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  if (!data.id) {
+    throw new Error('Resposta inesperada do Instagram ao publicar mídia (sem id).')
+  }
+  return { instagramMediaId: data.id }
+}
+
+// Espera o container ficar FINISHED antes de publicar — em polling porque a
+// Meta processa o vídeo de forma assíncrona depois do createReelsContainer.
+// Lança se: der ERROR/EXPIRED, ou não ficar pronto dentro do timeout.
+export async function waitForContainerReady(
+  containerId: string,
+  accessToken: string,
+  { timeoutMs = 2 * 60 * 1000, pollIntervalMs = 5000 }: { timeoutMs?: number; pollIntervalMs?: number } = {}
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const { statusCode, statusText } = await getContainerStatus(containerId, accessToken)
+    if (statusCode === 'FINISHED') return
+    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+      throw new Error(`Container de mídia falhou no processamento: ${statusCode}${statusText ? ` (${statusText})` : ''}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+  }
+  throw new Error(`Timeout esperando o container de mídia ficar pronto (${Math.round(timeoutMs / 1000)}s)`)
+}

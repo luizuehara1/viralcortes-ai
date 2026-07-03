@@ -18,10 +18,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  projects       Project[]
-  socialAccounts SocialAccount[]
+  accounts        Account[]
+  sessions        Session[]
+  projects        Project[]
+  socialAccounts  SocialAccount[]
+  templateOutputs TemplateOutput[]
+  scheduledPosts  ScheduledPost[]
 
   @@map("users")
 }
@@ -146,13 +148,13 @@ model SourceVideo {
 }
 
 model TranscriptSegment {
-  id            String  @id @default(cuid())
+  id            String @id @default(cuid())
   sourceVideoId String
   startTime     Float
   endTime       Float
-  text          String  @db.Text
+  text          String @db.Text
   confidence    Float?
-  chunkIndex    Int     @default(0)
+  chunkIndex    Int    @default(0)
 
   sourceVideo SourceVideo @relation(fields: [sourceVideoId], references: [id], onDelete: Cascade)
 
@@ -303,4 +305,77 @@ model SocialAccount {
 
   @@unique([userId, provider])
   @@map("social_accounts")
+}
+
+enum TemplateMediaType {
+  IMAGE
+  VIDEO
+}
+
+// Resultado gerado pelo Template Studio (mídia do usuário encaixada num
+// template) — antes só existia como arquivo em disco; agora fica registrado
+// pra poder ser editado/legendado (mesmo editorState/renderClip do editor de
+// clipes) e agendado pro Instagram.
+model TemplateOutput {
+  id          String            @id @default(cuid())
+  userId      String
+  filePath    String
+  mediaType   TemplateMediaType
+  duration    Float?
+  caption     String?
+  // Mesmo formato de SuggestedClip.editorState (ver src/types EditorState) —
+  // overlays de texto, legendas palavra-a-palavra, efeitos. Null = ainda não
+  // editado, filePath aponta pro resultado "limpo" do encaixe no template.
+  editorState Json?
+  createdAt   DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("template_outputs")
+}
+
+enum PostSourceType {
+  CLIP
+  TEMPLATE_OUTPUT
+}
+
+enum PostPlatform {
+  INSTAGRAM
+}
+
+enum ScheduledPostStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+// Agendamento de publicação (hoje só Instagram Reels via Content Publishing
+// API). sourceId aponta pra um SuggestedClip (usa o RenderedClip mais
+// adequado) ou um TemplateOutput, dependendo de sourceType — sem relação
+// FK direta porque pode apontar pra qualquer um dos dois.
+model ScheduledPost {
+  id               String              @id @default(cuid())
+  userId           String
+  sourceType       PostSourceType
+  sourceId         String
+  platform         PostPlatform        @default(INSTAGRAM)
+  caption          String
+  scheduledAt      DateTime
+  status           ScheduledPostStatus @default(PENDING)
+  instagramMediaId String?
+  errorMessage     String?
+  // Token opaco e único usado pela rota pública /api/public/media/[token] —
+  // é o único jeito de servir o vídeo pro Instagram baixar (video_url precisa
+  // ser público, sem sessão) sem expor os arquivos de todo mundo.
+  publicToken      String              @unique
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status, scheduledAt])
+  @@map("scheduled_posts")
 }

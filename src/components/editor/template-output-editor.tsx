@@ -3,31 +3,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, CalendarClock, Loader2 } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
-import { FormatPickerModal } from '@/components/clips/format-picker-modal'
-import type { EditorState, ClipFormat, FitMode } from '@/types'
+import { ScheduleModal } from '@/components/social/schedule-modal'
+import type { EditorState } from '@/types'
 
 interface Props {
-  clip: { id: string; title: string; startTime: number; endTime: number }
-  sourceVideoId: string
-  projectId: string
+  output: { id: string; duration: number; caption: string | null }
   initialEditorState: EditorState
 }
 
 type Tab = 'captions' | 'text' | 'effects'
 
-// Orquestra o editor inteiro: preview + autosave do editorState + disparo do
-// render (que já pega os overlays/legendas/efeitos automaticamente no
-// worker, ver src/workers/clip-renderer.ts). Não re-corta o clipe — o
-// intervalo [startTime, endTime] já foi decidido na sugestão de IA.
-export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState }: Props) {
+// Editor do resultado do Template Studio — mesma UI/lógica do ClipEditor
+// (src/components/editor/clip-editor.tsx), mas sem sourceVideoId/projectId/
+// janela de clipe: o TemplateOutput já É o arquivo inteiro (0 até duration).
+// Diferente de um clipe, não há múltiplos formatos pra escolher ao "renderizar"
+// — o botão só queima as edições de volta no próprio arquivo
+// (POST /api/template-outputs/[id]/render).
+export function TemplateOutputEditor({ output, initialEditorState }: Props) {
   const router = useRouter()
-  const duration = clip.endTime - clip.startTime
+  const duration = output.duration
 
   const [editorState, setEditorState] = useState<EditorState>(initialEditorState)
   const [tab, setTab] = useState<Tab>('captions')
@@ -35,16 +35,14 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
   const [playing, setPlaying] = useState(false)
   const [seekRequest, setSeekRequest] = useState<{ time: number; token: number } | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [pickerOpen, setPickerOpen] = useState(false)
   const [rendering, setRendering] = useState(false)
+  const [renderError, setRenderError] = useState('')
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   const seekTokenRef = useRef(0)
   const isFirstRender = useRef(true)
 
-  // Autosave com debounce — evita 1 request por tecla digitada/slider
-  // arrastado. Pula a primeira montagem (não precisa salvar o que acabou de
-  // ser carregado do servidor).
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false
@@ -54,7 +52,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/clips/${clip.id}/editor`, {
+        const res = await fetch(`/api/template-outputs/${output.id}/editor`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(editorState),
@@ -66,40 +64,40 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
     }, 800)
     return () => clearTimeout(saveTimer.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorState, clip.id])
+  }, [editorState, output.id])
 
   const seekTo = useCallback((time: number) => {
     seekTokenRef.current += 1
     setSeekRequest({ time, token: seekTokenRef.current })
   }, [])
 
-  const requestRender = async (format: ClipFormat, fitMode: FitMode) => {
+  const applyEdits = async () => {
     setRendering(true)
+    setRenderError('')
     try {
-      const res = await fetch(`/api/clips/${clip.id}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format, fitMode }),
-      })
-      if (res.ok) {
-        router.push(`/projects/${projectId}`)
+      const res = await fetch(`/api/template-outputs/${output.id}/render`, { method: 'POST' })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setRenderError(body?.error || 'Falha ao aplicar as edições')
+        setRendering(false)
         return
       }
+      router.push('/template-studio')
     } catch {
-      // segue para reabilitar o botão abaixo
+      setRenderError('Falha na conexão')
+      setRendering(false)
     }
-    setRendering(false)
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <Link href={`/projects/${projectId}`} className="p-2 rounded-lg glass hover:bg-white/8 transition-colors">
+          <Link href="/template-studio" className="p-2 rounded-lg glass hover:bg-white/8 transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-lg font-bold leading-tight">{clip.title}</h1>
+            <h1 className="text-lg font-bold leading-tight">Editar resultado do template</h1>
             <p className="text-xs text-white/40">Editor de vídeo · {duration.toFixed(0)}s</p>
           </div>
         </div>
@@ -108,21 +106,31 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
           <button
-            onClick={() => setPickerOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-all"
+            onClick={() => setScheduleOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
           >
-            <Sparkles className="w-4 h-4" />
-            Gerar corte com essas edições
+            <CalendarClock className="w-4 h-4" />
+            Agendar no Instagram
+          </button>
+          <button
+            onClick={applyEdits}
+            disabled={rendering}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-all"
+          >
+            {rendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {rendering ? 'Aplicando...' : 'Aplicar edições'}
           </button>
         </div>
       </div>
 
+      {renderError && <p className="text-sm text-red-400">{renderError}</p>}
+
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
         <div className="space-y-3">
           <VideoPreviewPlayer
-            videoSrc={`/api/videos/${sourceVideoId}/stream`}
-            clipStart={clip.startTime}
-            clipEnd={clip.endTime}
+            videoSrc={`/api/template-outputs/${output.id}/stream`}
+            clipStart={0}
+            clipEnd={duration}
             playing={playing}
             onPlayingChange={setPlaying}
             seekRequest={seekRequest}
@@ -157,7 +165,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
 
           {tab === 'captions' && (
             <CaptionsPanel
-              captionsEndpoint={`/api/clips/${clip.id}/captions`}
+              captionsEndpoint={`/api/template-outputs/${output.id}/captions`}
               captions={editorState.captions}
               captionStyle={editorState.captionStyle}
               captionsGeneratedAt={editorState.captionsGeneratedAt}
@@ -192,8 +200,13 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
         </div>
       </div>
 
-      {pickerOpen && (
-        <FormatPickerModal submitting={rendering} onClose={() => setPickerOpen(false)} onConfirm={requestRender} />
+      {scheduleOpen && (
+        <ScheduleModal
+          sourceType="TEMPLATE_OUTPUT"
+          sourceId={output.id}
+          defaultCaption={output.caption || ''}
+          onClose={() => setScheduleOpen(false)}
+        />
       )}
     </div>
   )

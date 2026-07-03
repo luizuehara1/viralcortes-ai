@@ -9,7 +9,10 @@ interface SeekRequest {
 }
 
 interface Props {
-  sourceVideoId: string
+  // URL do stream a tocar — /api/videos/[id]/stream para um clipe (janela
+  // dentro do vídeo fonte maior) ou /api/template-outputs/[id]/stream para
+  // um resultado do Template Studio (o arquivo inteiro já É o conteúdo).
+  videoSrc: string
   clipStart: number
   clipEnd: number
   playing: boolean
@@ -35,7 +38,7 @@ const CAPTION_POSITION_TOP: Record<CaptionStyle['position'], string> = {
 // resultado renderizado, em vez de usar um fator fixo que erra em telas
 // diferentes.
 export function VideoPreviewPlayer({
-  sourceVideoId,
+  videoSrc,
   clipStart,
   clipEnd,
   playing,
@@ -113,7 +116,7 @@ export function VideoPreviewPlayer({
     >
       <video
         ref={videoRef}
-        src={`/api/videos/${sourceVideoId}/stream`}
+        src={videoSrc}
         className="w-full h-full object-contain bg-black"
         onTimeUpdate={handleTimeUpdate}
         playsInline

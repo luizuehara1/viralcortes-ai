@@ -55,3 +55,26 @@ export async function enqueueClipRendering(clipId: string, format: string = 'ORI
     { jobId: `clip-${clipId}-${format}-${fitMode}` }
   )
 }
+
+export const socialPublishQueue = new Queue('social-publish', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    // Uma tentativa só — se falhar (container ERROR, timeout, token
+    // inválido), o motivo já fica salvo em ScheduledPost.errorMessage;
+    // re-tentar sozinho poderia publicar duas vezes se a falha foi só no
+    // registro do resultado, não na publicação em si.
+    attempts: 1,
+    removeOnComplete: 100,
+    removeOnFail: 200,
+  },
+})
+
+// delayMs <= 0 publica assim que o worker pegar o job (ScheduledPost com
+// scheduledAt no passado/agora).
+export async function enqueueSocialPublish(scheduledPostId: string, delayMs: number) {
+  return socialPublishQueue.add(
+    'publish',
+    { scheduledPostId },
+    { jobId: `publish-${scheduledPostId}`, delay: Math.max(0, delayMs) }
+  )
+}

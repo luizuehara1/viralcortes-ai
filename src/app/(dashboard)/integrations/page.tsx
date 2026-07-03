@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { YoutubeConnectCard } from '@/components/integrations/youtube-connect-card'
 import { InstagramConnectCard } from '@/components/integrations/instagram-connect-card'
+import { ScheduledPostsList } from '@/components/social/scheduled-posts-list'
 
 interface Props {
   searchParams: { error?: string; connected?: string }
@@ -69,6 +70,7 @@ export default async function IntegrationsPage({ searchParams }: Props) {
 
       <YoutubeConnectCard initialAccount={serialize(youtube)} />
       <InstagramConnectCard initialAccount={serialize(instagram)} />
+      <ScheduledPostsList />
     </div>
   )
 }

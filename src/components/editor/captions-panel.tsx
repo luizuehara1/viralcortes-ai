@@ -5,7 +5,10 @@ import { Loader2, Wand2 } from 'lucide-react'
 import type { CaptionSegment, CaptionStyle, CaptionPosition } from '@/types'
 
 interface Props {
-  clipId: string
+  // URL da rota que gera as legendas — /api/clips/[id]/captions ou
+  // /api/template-outputs/[id]/captions, dependendo de onde o editor está
+  // sendo usado.
+  captionsEndpoint: string
   captions: CaptionSegment[]
   captionStyle: CaptionStyle
   captionsGeneratedAt?: string
@@ -17,7 +20,7 @@ interface Props {
 const POSITION_LABELS: Record<CaptionPosition, string> = { top: 'Topo', center: 'Centro', bottom: 'Base' }
 
 export function CaptionsPanel({
-  clipId,
+  captionsEndpoint,
   captions,
   captionStyle,
   captionsGeneratedAt,
@@ -32,7 +35,7 @@ export function CaptionsPanel({
     setGenerating(true)
     setError('')
     try {
-      const res = await fetch(`/api/clips/${clipId}/captions`, { method: 'POST' })
+      const res = await fetch(captionsEndpoint, { method: 'POST' })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         setError(data?.error || 'Falha ao gerar legendas')
