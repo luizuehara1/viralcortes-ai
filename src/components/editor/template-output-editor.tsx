@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, Loader2 } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
@@ -26,7 +25,6 @@ type Tab = 'captions' | 'text' | 'effects'
 // — o botão só queima as edições de volta no próprio arquivo
 // (POST /api/template-outputs/[id]/render).
 export function TemplateOutputEditor({ output, initialEditorState }: Props) {
-  const router = useRouter()
   const duration = output.duration
 
   const [editorState, setEditorState] = useState<EditorState>(initialEditorState)
@@ -38,6 +36,7 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
   const [rendering, setRendering] = useState(false)
   const [renderError, setRenderError] = useState('')
   const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
+  const [appliedAt, setAppliedAt] = useState<number | null>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   const seekTokenRef = useRef(0)
@@ -82,7 +81,14 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
         setRendering(false)
         return
       }
-      router.push('/template-studio')
+      // Fica na mesma tela em vez de voltar pro Template Studio — o
+      // Template Studio não guarda uma lista dos resultados anteriores, só
+      // o que acabou de gerar na sessão atual, então navegar pra lá fazia o
+      // vídeo recém-editado "sumir" (inacessível) antes do usuário conseguir
+      // baixar ou agendar. appliedAt força o player a recarregar o arquivo
+      // novo (a URL do stream não muda, o navegador cacheava a versão antiga).
+      setAppliedAt(Date.now())
+      setRendering(false)
     } catch {
       setRenderError('Falha na conexão')
       setRendering(false)
@@ -131,11 +137,23 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
       </div>
 
       {renderError && <p className="text-sm text-red-400">{renderError}</p>}
+      {appliedAt && !renderError && (
+        <div className="flex items-center gap-3 text-sm text-emerald-400 bg-emerald-500/10 rounded-xl px-4 py-2.5">
+          <span>Edições aplicadas! Baixe ou agende quando quiser.</span>
+          <a
+            href={`/api/template-outputs/${output.id}/stream`}
+            download
+            className="underline hover:text-emerald-300"
+          >
+            Baixar vídeo
+          </a>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
         <div className="space-y-3">
           <VideoPreviewPlayer
-            videoSrc={`/api/template-outputs/${output.id}/stream`}
+            videoSrc={`/api/template-outputs/${output.id}/stream${appliedAt ? `?t=${appliedAt}` : ''}`}
             clipStart={0}
             clipEnd={duration}
             playing={playing}
