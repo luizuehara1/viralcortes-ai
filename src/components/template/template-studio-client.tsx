@@ -81,6 +81,7 @@ export function TemplateStudioClient() {
   const [result, setResult] = useState<GenerateResult | null>(null)
   const [error, setError] = useState('')
   const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
+  const [autoSchedule, setAutoSchedule] = useState(false)
 
   // Facecam auto-split state (only relevant when the template has exactly 2
   // blue regions and the uploaded media is a video). facecamCrop is the
@@ -204,6 +205,7 @@ export function TemplateStudioClient() {
         formData.append('mediaFile', mediaFile)
         const body = await xhrUpload('/api/template/generate', formData, setProgress)
         setResult(body)
+        if (autoSchedule && body.mediaType === 'video') setSchedulePlatform('INSTAGRAM_REELS')
         return
       }
 
@@ -225,6 +227,7 @@ export function TemplateStudioClient() {
 
       const body = await xhrUpload('/api/template/generate', formData, setProgress)
       setResult(body)
+      if (autoSchedule && body.mediaType === 'video') setSchedulePlatform('INSTAGRAM_REELS')
     } catch (err: any) {
       setError(err.message || 'Falha ao gerar a arte')
     } finally {
@@ -483,6 +486,15 @@ export function TemplateStudioClient() {
       )}
 
       {/* Generate */}
+      <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer -mb-2.5">
+        <input
+          type="checkbox"
+          checked={autoSchedule}
+          onChange={(e) => setAutoSchedule(e.target.checked)}
+          className="w-3.5 h-3.5 rounded accent-violet-500 cursor-pointer"
+        />
+        Abrir agendamento no Instagram assim que gerar
+      </label>
       <button
         onClick={generate}
         disabled={
