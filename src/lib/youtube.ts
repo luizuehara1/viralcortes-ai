@@ -41,13 +41,27 @@ export function requireYoutubeEnv(): YoutubeEnv {
   }
 }
 
+// channels.list com part=snippet,statistics (usado logo após conectar, para
+// mostrar o canal) exige leitura, que o escopo de upload sozinho não cobre —
+// Google responde 403 "insufficientPermissions" mesmo com o token válido.
+// Sempre incluímos esse escopo de leitura além do(s) configurado(s) em
+// YOUTUBE_UPLOAD_SCOPE, em vez de depender de quem configurar o Railway
+// lembrar de incluir os dois.
+const YOUTUBE_READONLY_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly'
+
+function withReadonlyScope(configuredScope: string): string {
+  const scopes = new Set(configuredScope.split(/\s+/).filter(Boolean))
+  scopes.add(YOUTUBE_READONLY_SCOPE)
+  return Array.from(scopes).join(' ')
+}
+
 export function buildGoogleAuthUrl(state: string): string {
   const env = requireYoutubeEnv()
   const params = new URLSearchParams({
     client_id: env.clientId,
     redirect_uri: env.redirectUri,
     response_type: 'code',
-    scope: env.scope,
+    scope: withReadonlyScope(env.scope),
     access_type: 'offline', // necessário para receber refresh_token
     prompt: 'consent', // força reenvio do refresh_token mesmo se já autorizado antes
     state,
