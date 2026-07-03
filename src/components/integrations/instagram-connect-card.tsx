@@ -87,9 +87,7 @@ export function InstagramConnectCard({ initialAccount }: Props) {
           )}
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">@{account.accountName || 'conta_instagram'}</p>
-            <p className="text-xs text-white/40 truncate">
-              via Página {account.metadata?.pageName || account.metadata?.pageId || ''}
-            </p>
+            <p className="text-xs text-white/40 truncate">Conta profissional do Instagram</p>
           </div>
         </div>
       )}

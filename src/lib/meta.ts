@@ -1,21 +1,22 @@
-// OAuth via Facebook Login for Business + Graph API para localizar a conta
-// do Instagram Business vinculada a uma Página do Facebook. Via fetch puro,
-// sem SDK.
+// OAuth via "Instagram API with Instagram Login" (Instagram Business
+// Login) — login direto com a conta profissional do Instagram, sem
+// depender de uma Página do Facebook vinculada. Via fetch puro, sem SDK.
 //
-// Não usar o fluxo "Instagram API with Instagram Login"
-// (instagram.com/oauth/authorize) — o app da Meta deste projeto só tem o
-// produto "Facebook Login for Business" habilitado; o fluxo direto do
-// Instagram Login dá "Invalid platform app" nele. A Página do Facebook
-// ("VIRA Cortes IA") já está conectada ao Instagram (@hawkclipsofc), então
-// o caminho certo é: login com Facebook → listar Páginas → achar a que tem
-// instagram_business_account vinculado.
+// Não usar o fluxo antigo "Facebook Login for Business"
+// (facebook.com/dialog/oauth + me/accounts + instagram_business_account) —
+// o app da Meta deste projeto foi reconfigurado para o produto "Instagram
+// API with Instagram Login", cujos scopes (instagram_business_basic,
+// instagram_business_content_publish) e endpoints (instagram.com/oauth,
+// api.instagram.com, graph.instagram.com) são diferentes do fluxo antigo.
 
 import { prisma } from './prisma'
 import { decrypt } from './crypto'
 
-const GRAPH_VERSION = 'v20.0'
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
-const FB_DIALOG_URL = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`
+const GRAPH_VERSION = 'v21.0'
+const IG_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`
+const IG_AUTH_URL = 'https://www.instagram.com/oauth/authorize'
+const IG_CODE_EXCHANGE_URL = 'https://api.instagram.com/oauth/access_token'
+const IG_LONG_LIVED_URL = 'https://graph.instagram.com/access_token'
 
 export interface MetaEnv {
   appId: string
@@ -53,119 +54,109 @@ export function buildMetaAuthUrl(state: string): string {
     response_type: 'code',
     state,
   })
-  return `${FB_DIALOG_URL}?${params.toString()}`
+  return `${IG_AUTH_URL}?${params.toString()}`
 }
 
-interface MetaTokenResponse {
+interface InstagramShortLivedToken {
+  access_token: string
+  user_id: string
+  permissions?: string
+}
+
+// O endpoint de troca de code do Instagram Login (api.instagram.com) às
+// vezes anexa um sufixo "#_" ao final do code recebido no redirect — se
+// isso for enviado de volta na troca, o Instagram rejeita. Removemos por
+// segurança.
+function stripCodeSuffix(code: string): string {
+  return code.replace(/#_$/, '')
+}
+
+export async function exchangeCodeForShortLivedToken(code: string): Promise<InstagramShortLivedToken> {
+  const env = requireMetaEnv()
+  const res = await fetch(IG_CODE_EXCHANGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.appId,
+      client_secret: env.appSecret,
+      grant_type: 'authorization_code',
+      redirect_uri: env.redirectUri,
+      code: stripCodeSuffix(code),
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Falha ao trocar code por token (status ${res.status}): ${body.slice(0, 300)}`)
+  }
+  const json = await res.json()
+  // A resposta pode vir como { data: [{...}] } ou já no formato direto,
+  // dependendo da versão/config do produto — cobrimos os dois.
+  const entry = Array.isArray(json?.data) ? json.data[0] : json
+  if (!entry?.access_token || !entry?.user_id) {
+    throw new Error('Resposta inesperada do Instagram ao trocar code por token (sem access_token/user_id).')
+  }
+  return entry
+}
+
+interface InstagramLongLivedToken {
   access_token: string
   token_type: string
-  expires_in?: number
+  expires_in: number
 }
 
-export async function exchangeCodeForUserToken(code: string): Promise<MetaTokenResponse> {
+// Troca o token de curta duração (~1h) por um de longa duração (~60 dias).
+export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<InstagramLongLivedToken> {
   const env = requireMetaEnv()
   const params = new URLSearchParams({
-    client_id: env.appId,
+    grant_type: 'ig_exchange_token',
     client_secret: env.appSecret,
-    redirect_uri: env.redirectUri,
-    code,
+    access_token: shortLivedToken,
   })
-  const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`)
+  const res = await fetch(`${IG_LONG_LIVED_URL}?${params.toString()}`)
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`Falha ao trocar code por token (status ${res.status}): ${body.slice(0, 200)}`)
+    throw new Error(`Falha ao gerar token de longa duração (status ${res.status}): ${body.slice(0, 300)}`)
   }
   return res.json()
-}
-
-// Troca o token de usuário de curta duração (~2h) por um de longa duração
-// (~60 dias). Necessário para não pedir login de novo toda hora.
-export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<MetaTokenResponse> {
-  const env = requireMetaEnv()
-  const params = new URLSearchParams({
-    grant_type: 'fb_exchange_token',
-    client_id: env.appId,
-    client_secret: env.appSecret,
-    fb_exchange_token: shortLivedToken,
-  })
-  const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`)
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Falha ao gerar token de longa duração (status ${res.status}): ${body.slice(0, 200)}`)
-  }
-  return res.json()
-}
-
-interface FacebookPage {
-  id: string
-  name: string
-  access_token: string
-  instagram_business_account?: { id: string }
 }
 
 export interface InstagramConnection {
-  pageId: string
-  pageName: string
-  pageAccessToken: string
-  instagramBusinessAccountId: string
+  instagramUserId: string
   accountName: string
   profilePictureUrl: string | null
 }
 
-export class NoInstagramBusinessAccountError extends Error {}
-
-// Busca as Páginas do Facebook administradas pelo usuário (já trazendo
-// instagram_business_account no mesmo request) e retorna a primeira que
-// tiver uma conta do Instagram Business vinculada.
-export async function findConnectedInstagramAccount(userAccessToken: string): Promise<InstagramConnection> {
-  const pagesRes = await fetch(
-    `${GRAPH_BASE}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(userAccessToken)}`
-  )
-  if (!pagesRes.ok) {
-    const body = await pagesRes.text()
-    throw new Error(`Falha ao listar Páginas do Facebook (status ${pagesRes.status}): ${body.slice(0, 200)}`)
+// Busca os dados básicos da própria conta profissional do Instagram
+// (username, foto) usando o token direto do Instagram Login — sem Página
+// do Facebook no meio.
+export async function fetchOwnInstagramAccount(userId: string, accessToken: string): Promise<InstagramConnection> {
+  const params = new URLSearchParams({
+    fields: 'id,username,profile_picture_url',
+    access_token: accessToken,
+  })
+  const res = await fetch(`${IG_GRAPH_BASE}/${userId}?${params.toString()}`)
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Falha ao buscar perfil do Instagram (status ${res.status}): ${body.slice(0, 300)}`)
   }
-  const pagesData = await pagesRes.json()
-  const pages: FacebookPage[] = pagesData.data ?? []
-
-  const pageWithInstagram = pages.find((page) => page.instagram_business_account?.id)
-  if (!pageWithInstagram?.instagram_business_account) {
-    throw new NoInstagramBusinessAccountError(
-      'Nenhuma conta profissional do Instagram conectada à Página do Facebook.'
-    )
-  }
-
-  const instagramAccountId = pageWithInstagram.instagram_business_account.id
-  const igProfileRes = await fetch(
-    `${GRAPH_BASE}/${instagramAccountId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(pageWithInstagram.access_token)}`
-  )
-  if (!igProfileRes.ok) {
-    const body = await igProfileRes.text()
-    throw new Error(`Falha ao buscar perfil do Instagram (status ${igProfileRes.status}): ${body.slice(0, 200)}`)
-  }
-  const igProfile = await igProfileRes.json()
-
+  const data = await res.json()
   return {
-    pageId: pageWithInstagram.id,
-    pageName: pageWithInstagram.name,
-    pageAccessToken: pageWithInstagram.access_token,
-    instagramBusinessAccountId: instagramAccountId,
-    accountName: igProfile.username ?? 'conta_instagram',
-    profilePictureUrl: igProfile.profile_picture_url ?? null,
+    instagramUserId: data.id ?? userId,
+    accountName: data.username ?? 'conta_instagram',
+    profilePictureUrl: data.profile_picture_url ?? null,
   }
 }
 
-// Retorna o Page Access Token salvo (usado para chamar a Graph API em nome
-// da conta do Instagram). Tokens de Página de longa duração não expiram
-// enquanto o app não for revogado — não há refresh_token na Meta.
-export async function getStoredPageAccessToken(userId: string): Promise<{ accessToken: string; instagramBusinessAccountId: string }> {
+// Retorna o access_token salvo (token direto da conta do Instagram, não
+// mais um Page Access Token) e o ID da conta profissional do Instagram.
+export async function getStoredInstagramToken(userId: string): Promise<{ accessToken: string; instagramUserId: string }> {
   const account = await prisma.socialAccount.findUnique({
     where: { userId_provider: { userId, provider: 'INSTAGRAM' } },
   })
   if (!account) {
     throw new Error('Nenhuma conta do Instagram conectada para este usuário.')
   }
-  return { accessToken: decrypt(account.accessToken), instagramBusinessAccountId: account.providerAccountId }
+  return { accessToken: decrypt(account.accessToken), instagramUserId: account.providerAccountId }
 }
 
 export interface InstagramAccountInfo {
@@ -175,15 +166,15 @@ export interface InstagramAccountInfo {
   mediaCount: number | null
 }
 
-export async function fetchInstagramAccountInfo(instagramBusinessAccountId: string, pageAccessToken: string): Promise<InstagramAccountInfo> {
+export async function fetchInstagramAccountInfo(instagramUserId: string, accessToken: string): Promise<InstagramAccountInfo> {
   const params = new URLSearchParams({
     fields: 'username,profile_picture_url,followers_count,media_count',
-    access_token: pageAccessToken,
+    access_token: accessToken,
   })
-  const res = await fetch(`${GRAPH_BASE}/${instagramBusinessAccountId}?${params.toString()}`)
+  const res = await fetch(`${IG_GRAPH_BASE}/${instagramUserId}?${params.toString()}`)
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`Falha ao consultar conta do Instagram (status ${res.status}): ${body.slice(0, 200)}`)
+    throw new Error(`Falha ao consultar conta do Instagram (status ${res.status}): ${body.slice(0, 300)}`)
   }
   const data = await res.json()
   return {

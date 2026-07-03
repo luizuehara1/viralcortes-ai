@@ -4,11 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { encrypt } from '@/lib/crypto'
 import {
-  exchangeCodeForUserToken,
+  exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
-  findConnectedInstagramAccount,
+  fetchOwnInstagramAccount,
   MetaConfigError,
-  NoInstagramBusinessAccountError,
 } from '@/lib/meta'
 import { getAppUrl } from '@/lib/app-url'
 
@@ -46,14 +45,14 @@ export async function GET(req: NextRequest) {
   let step = 'troca_code_por_token_curto'
   try {
     console.log('[meta/callback] etapa:', step, '| redirect_uri configurado:', process.env.META_REDIRECT_URI ?? '(ausente)')
-    const shortLived = await exchangeCodeForUserToken(code)
+    const shortLived = await exchangeCodeForShortLivedToken(code)
 
     step = 'troca_por_token_longo'
     const longLived = await exchangeForLongLivedToken(shortLived.access_token)
 
-    step = 'buscar_paginas_e_instagram'
-    const instagram = await findConnectedInstagramAccount(longLived.access_token)
-    console.log('[meta/callback] página encontrada:', instagram.pageName, '| instagram:', instagram.accountName)
+    step = 'buscar_conta_instagram'
+    const instagram = await fetchOwnInstagramAccount(shortLived.user_id, longLived.access_token)
+    console.log('[meta/callback] instagram conectado:', instagram.accountName)
 
     step = 'salvar_conta'
     const userId = (session.user as any).id
@@ -64,22 +63,20 @@ export async function GET(req: NextRequest) {
       create: {
         userId,
         provider: 'INSTAGRAM',
-        providerAccountId: instagram.instagramBusinessAccountId,
+        providerAccountId: instagram.instagramUserId,
         accountName: instagram.accountName,
         accountAvatar: instagram.profilePictureUrl,
-        accessToken: encrypt(instagram.pageAccessToken),
+        accessToken: encrypt(longLived.access_token),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { pageId: instagram.pageId, pageName: instagram.pageName },
       },
       update: {
-        providerAccountId: instagram.instagramBusinessAccountId,
+        providerAccountId: instagram.instagramUserId,
         accountName: instagram.accountName,
         accountAvatar: instagram.profilePictureUrl,
-        accessToken: encrypt(instagram.pageAccessToken),
+        accessToken: encrypt(longLived.access_token),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { pageId: instagram.pageId, pageName: instagram.pageName },
       },
     })
 
@@ -89,7 +86,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error(`[meta/callback] Falha na etapa "${step}":`, (err as Error).message)
     const message =
-      err instanceof NoInstagramBusinessAccountError || err instanceof MetaConfigError || err instanceof Error
+      err instanceof MetaConfigError || err instanceof Error
         ? err.message
         : 'Erro ao conectar com o Instagram. Tente novamente.'
     return redirectWithError(message)
