@@ -64,7 +64,20 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  await enqueueSocialPublish(post.id, delayMs)
+  try {
+    await enqueueSocialPublish(post.id, delayMs)
+  } catch (err: any) {
+    // Se não conseguiu nem enfileirar, o ScheduledPost criado acima nunca
+    // vai disparar — apaga em vez de deixar um registro PENDING órfão, e
+    // devolve o motivo real (ex.: Redis fora do ar / cota estourada) em vez
+    // de um 500 genérico em HTML que o cliente não consegue parsear.
+    await prisma.scheduledPost.delete({ where: { id: post.id } }).catch(() => {})
+    console.error('[instagram/schedule] Falha ao enfileirar publicação:', err.message)
+    return NextResponse.json(
+      { error: `Falha ao agendar: não foi possível enfileirar o job (${err.message}). Tente novamente em instantes.` },
+      { status: 503 }
+    )
+  }
 
   return NextResponse.json({ id: post.id, status: post.status, scheduledAt: post.scheduledAt }, { status: 201 })
 }
