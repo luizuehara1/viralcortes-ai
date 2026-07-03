@@ -113,7 +113,10 @@ export default async function ProjectPage({ params }: Props) {
           <ProjectRefresher>
             <StatusTracker
               sourceVideoId={latestVideo.id}
+              projectId={project.id}
               initialStatus={latestVideo.status as any}
+              initialErrorMessage={latestVideo.errorMessage}
+              initialErrorCode={latestVideo.errorCode}
               sourceType={latestVideo.sourceType as any}
               isLongLive={latestVideo.isLongLive}
             />
@@ -121,7 +124,10 @@ export default async function ProjectPage({ params }: Props) {
         ) : (
           <StatusTracker
             sourceVideoId={latestVideo.id}
+            projectId={project.id}
             initialStatus={latestVideo.status as any}
+            initialErrorMessage={latestVideo.errorMessage}
+            initialErrorCode={latestVideo.errorCode}
             sourceType={latestVideo.sourceType as any}
             isLongLive={latestVideo.isLongLive}
           />

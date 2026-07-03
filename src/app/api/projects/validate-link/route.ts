@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 import { detectPlatform, isValidHttpUrl } from '@/lib/platform-detector'
-import { fetchMetadata } from '@/lib/ytdlp'
+import { fetchMetadata, YtDlpError } from '@/lib/ytdlp'
 
 export const runtime = 'nodejs'
 export const maxDuration = 45
@@ -40,11 +40,17 @@ export async function POST(req: Request) {
       isLive: metadata.isLive,
     })
   } catch (err: any) {
+    // Loga o stderr completo do yt-dlp só no servidor (admin/debug) — a
+    // resposta ao cliente nunca inclui stack trace nem detalhes técnicos.
+    if (err instanceof YtDlpError) {
+      console.error(`[validate-link] yt-dlp falhou para ${url}:`, err.technicalError)
+    }
     return NextResponse.json(
       {
         error:
           err.message ||
           'Não foi possível importar esse link automaticamente. Baixe o vídeo e envie pelo upload manual.',
+        errorCode: err instanceof YtDlpError ? err.code ?? null : null,
       },
       { status: 422 }
     )

@@ -3,6 +3,42 @@ import fs from 'fs'
 
 const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp'
 
+export const YOUTUBE_REQUIRES_LOGIN_OR_COOKIES = 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES'
+
+export const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
+  [YOUTUBE_REQUIRES_LOGIN_OR_COOKIES]:
+    'Não foi possível importar esse vídeo automaticamente porque o YouTube solicitou verificação/login. Baixe o vídeo manualmente e envie pelo upload do PC.',
+}
+
+// Sinais de que o YouTube (ou outra plataforma) bloqueou a requisição por
+// exigir login/verificação anti-bot — nunca tentamos contornar isso (sem
+// cookies, sem login automatizado); apenas detectamos para mostrar uma
+// mensagem amigável e oferecer o upload manual como alternativa.
+const BOT_OR_LOGIN_PATTERNS = [
+  /sign in to confirm you.?re not a bot/i,
+  /cookies-from-browser/i,
+  /\bcookies\b/i,
+  /confirm you.?re not a bot/i,
+  /this video may be inappropriate/i,
+  /login required/i,
+]
+
+function isBotOrLoginBlock(stderr: string): boolean {
+  return BOT_OR_LOGIN_PATTERNS.some((p) => p.test(stderr))
+}
+
+export class YtDlpError extends Error {
+  code?: string
+  technicalError: string
+
+  constructor(message: string, technicalError: string, code?: string) {
+    super(message)
+    this.name = 'YtDlpError'
+    this.code = code
+    this.technicalError = technicalError
+  }
+}
+
 function runYtDlp(args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let proc: ReturnType<typeof spawn>
@@ -43,11 +79,19 @@ function runYtDlp(args: string[], timeoutMs: number): Promise<string> {
       settled = true
       clearTimeout(timer)
       if (code !== 0) {
+        if (isBotOrLoginBlock(stderr)) {
+          reject(new YtDlpError(
+            FRIENDLY_ERROR_MESSAGES[YOUTUBE_REQUIRES_LOGIN_OR_COOKIES],
+            stderr.trim(),
+            YOUTUBE_REQUIRES_LOGIN_OR_COOKIES
+          ))
+          return
+        }
         // yt-dlp's stderr is already a clean, user-presentable one-liner in
         // the common cases ("The channel is not currently live", "Unable to
         // download webpage: HTTP Error 404", "Unsupported URL", ...).
         const clean = stderr.trim().replace(/^ERROR:\s*(\[[^\]]+\]\s*)?/i, '') || `yt-dlp encerrou com código ${code}`
-        reject(new Error(clean))
+        reject(new YtDlpError(clean, stderr.trim()))
         return
       }
       resolve(stdout)

@@ -11,6 +11,7 @@ import { SOURCE_PLATFORM_LABELS } from '@/types'
 interface Props {
   projectId: string
   onSuccess: (sourceVideoId: string) => void
+  onSwitchToUpload?: () => void
 }
 
 interface ValidatedLink {
@@ -33,22 +34,25 @@ const PLATFORM_BADGES: { platform: SourcePlatform; label: string }[] = [
 
 const LONG_VIDEO_THRESHOLD_SECONDS = 3 * 3600
 
-export function VideoLinkImport({ projectId, onSuccess }: Props) {
+export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Props) {
   const [url, setUrl] = useState('')
   const [validating, setValidating] = useState(false)
   const [validated, setValidated] = useState<ValidatedLink | null>(null)
   const [error, setError] = useState('')
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
   const resetValidation = () => {
     setValidated(null)
     setError('')
+    setErrorCode(null)
   }
 
   const validate = async () => {
     if (!url.trim()) return
     setValidating(true)
     setError('')
+    setErrorCode(null)
     setValidated(null)
     try {
       const res = await fetch('/api/projects/validate-link', {
@@ -58,6 +62,7 @@ export function VideoLinkImport({ projectId, onSuccess }: Props) {
       })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body) {
+        setErrorCode(body?.errorCode ?? null)
         throw new Error(
           body?.error || 'Não foi possível importar esse link automaticamente. Baixe o vídeo e envie pelo upload manual.'
         )
@@ -74,6 +79,7 @@ export function VideoLinkImport({ projectId, onSuccess }: Props) {
     if (!validated) return
     setCreating(true)
     setError('')
+    setErrorCode(null)
     try {
       const res = await fetch('/api/upload/link', {
         method: 'POST',
@@ -140,9 +146,19 @@ export function VideoLinkImport({ projectId, onSuccess }: Props) {
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+            {errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES' && onSwitchToUpload && (
+              <button
+                onClick={onSwitchToUpload}
+                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+              >
+                Enviar vídeo do PC
+              </button>
+            )}
           </div>
         )}
 

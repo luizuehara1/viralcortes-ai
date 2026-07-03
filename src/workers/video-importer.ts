@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { redisConnection, enqueueVideoProcessing } from '@/lib/queue'
 import { prisma } from '@/lib/prisma'
-import { downloadVideo } from '@/lib/ytdlp'
+import { downloadVideo, YtDlpError } from '@/lib/ytdlp'
 import { getUploadDir } from '@/lib/utils'
 
 async function importVideo(job: Job) {
@@ -20,7 +20,7 @@ async function importVideo(job: Job) {
 
   await prisma.sourceVideo.update({
     where: { id: sourceVideoId },
-    data: { status: 'IMPORTING', errorMessage: null },
+    data: { status: 'IMPORTING', errorMessage: null, errorCode: null, technicalError: null },
   })
   await job.updateProgress(5)
 
@@ -67,8 +67,17 @@ export function createImportWorker() {
         console.warn(`[Importer] Job ${job.id} falhou mas o vídeo ${job.data.sourceVideoId} já está COMPLETED — ignorando.`)
         return
       }
+      const isYtDlpError = err instanceof YtDlpError
       await prisma.sourceVideo
-        .update({ where: { id: job.data.sourceVideoId }, data: { status: 'FAILED', errorMessage: err.message } })
+        .update({
+          where: { id: job.data.sourceVideoId },
+          data: {
+            status: 'FAILED',
+            errorMessage: err.message,
+            errorCode: isYtDlpError ? err.code ?? null : null,
+            technicalError: isYtDlpError ? err.technicalError : null,
+          },
+        })
         .catch(console.error)
     }
   })

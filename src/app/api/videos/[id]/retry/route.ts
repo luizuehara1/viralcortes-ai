@@ -47,7 +47,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
     await prisma.sourceVideo.update({
       where: { id: video.id },
-      data: { status: 'IMPORTING', errorMessage: null },
+      data: { status: 'IMPORTING', errorMessage: null, errorCode: null, technicalError: null },
     })
     await importQueue.add(
       'import-video',
@@ -76,7 +76,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   await prisma.sourceVideo.update({
     where: { id: video.id },
-    data: { status: 'EXTRACTING_AUDIO', errorMessage: null },
+    data: { status: 'EXTRACTING_AUDIO', errorMessage: null, errorCode: null, technicalError: null },
   })
 
   await videoQueue.add(

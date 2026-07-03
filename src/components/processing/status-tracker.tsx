@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Circle, Loader2, XCircle, AlertTriangle, RotateCcw, Ban, Zap } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, XCircle, AlertTriangle, RotateCcw, Ban, Zap, Upload, LinkIcon } from 'lucide-react'
 import type { VideoStatus, SourceType } from '@/types'
 import { VIDEO_STATUS_STEPS } from '@/types'
+import { VideoUpload } from '@/components/upload/video-upload'
+import { VideoLinkImport } from '@/components/upload/video-link-import'
+
+const YOUTUBE_REQUIRES_LOGIN_OR_COOKIES = 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES'
 
 interface ChunkProgress {
   type: 'TRANSCRIBE' | 'ANALYZE_CLIPS'
@@ -16,7 +20,10 @@ interface ChunkProgress {
 
 interface Props {
   sourceVideoId: string
+  projectId: string
   initialStatus: VideoStatus
+  initialErrorMessage?: string | null
+  initialErrorCode?: string | null
   sourceType?: SourceType
   isLongLive?: boolean
   onCompleted?: () => void
@@ -29,16 +36,20 @@ const POLL_INTERVAL = 3000
 // flag normal slow steps.
 const STUCK_THRESHOLD_MS = 3 * 60 * 1000
 
-export function StatusTracker({ sourceVideoId, initialStatus, sourceType, isLongLive, onCompleted }: Props) {
+export function StatusTracker({
+  sourceVideoId, projectId, initialStatus, initialErrorMessage, initialErrorCode, sourceType, isLongLive, onCompleted,
+}: Props) {
   const router = useRouter()
   const [status, setStatus] = useState<VideoStatus>(initialStatus)
   const [clipsCount, setClipsCount] = useState(0)
   const [chunkProgress, setChunkProgress] = useState<ChunkProgress | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(initialErrorMessage ?? null)
+  const [errorCode, setErrorCode] = useState<string | null>(initialErrorCode ?? null)
   const [showTechnicalError, setShowTechnicalError] = useState(false)
   const [stuck, setStuck] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [altAction, setAltAction] = useState<'upload' | 'link' | null>(null)
   const lastChangedAtRef = useRef<number>(Date.now())
   const lastUpdatedAtRef = useRef<string | null>(null)
 
@@ -63,6 +74,7 @@ export function StatusTracker({ sourceVideoId, initialStatus, sourceType, isLong
           setClipsCount(data.suggestedClips?.length ?? 0)
           setChunkProgress(data.chunkProgress ?? null)
           setErrorMessage(data.errorMessage ?? null)
+          setErrorCode(data.errorCode ?? null)
 
           if (data.updatedAt !== lastUpdatedAtRef.current) {
             lastUpdatedAtRef.current = data.updatedAt
@@ -97,6 +109,7 @@ export function StatusTracker({ sourceVideoId, initialStatus, sourceType, isLong
       if (res.ok) {
         setStatus('EXTRACTING_AUDIO')
         setErrorMessage(null)
+        setErrorCode(null)
         setStuck(false)
         lastUpdatedAtRef.current = null
         lastChangedAtRef.current = Date.now()
@@ -171,7 +184,54 @@ export function StatusTracker({ sourceVideoId, initialStatus, sourceType, isLong
         </div>
       )}
 
-      {status === 'FAILED' ? (
+      {status === 'FAILED' && errorCode === YOUTUBE_REQUIRES_LOGIN_OR_COOKIES ? (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-medium">Importação automática bloqueada</p>
+              <p className="text-sm text-amber-300/70 mt-0.5">
+                O YouTube bloqueou a importação automática deste vídeo. Use upload manual ou tente outro link público.
+              </p>
+            </div>
+          </div>
+
+          {actionError && <p className="text-xs text-red-400">{actionError}</p>}
+
+          {altAction === null && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setAltAction('upload')}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-all"
+              >
+                <Upload className="w-4 h-4" />
+                Enviar vídeo do PC
+              </button>
+              <button
+                onClick={() => setAltAction('link')}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+              >
+                <LinkIcon className="w-4 h-4" />
+                Tentar outro link
+              </button>
+            </div>
+          )}
+
+          {altAction === 'upload' && (
+            <VideoUpload
+              projectId={projectId}
+              onSuccess={() => { setAltAction(null); router.refresh() }}
+            />
+          )}
+
+          {altAction === 'link' && (
+            <VideoLinkImport
+              projectId={projectId}
+              onSuccess={() => { setAltAction(null); router.refresh() }}
+            />
+          )}
+        </div>
+      ) : status === 'FAILED' ? (
         <div className="space-y-3">
           <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">
             <XCircle className="w-5 h-5 shrink-0" />

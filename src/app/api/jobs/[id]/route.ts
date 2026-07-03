@@ -20,6 +20,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       title: true,
       duration: true,
       errorMessage: true,
+      errorCode: true,
       updatedAt: true,
       isLongLive: true,
       suggestedClips: {

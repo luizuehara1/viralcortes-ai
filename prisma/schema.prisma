@@ -126,6 +126,13 @@ model SourceVideo {
   isLongLive     Boolean         @default(false)
   status         VideoStatus     @default(PENDING)
   errorMessage   String?
+  // Código estável para a UI reagir a falhas específicas (ex.: mostrar botão
+  // de upload manual quando o YouTube bloqueia por bot/login). Null = falha
+  // genérica, sem tratamento especial na tela.
+  errorCode      String?
+  // stderr completo do yt-dlp (ou outro erro técnico) — só para logs/admin,
+  // nunca é retornado pela API de status para o cliente.
+  technicalError String?         @db.Text
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

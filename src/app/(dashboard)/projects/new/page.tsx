@@ -156,6 +156,7 @@ export default function NewProjectPage() {
         <VideoLinkImport
           projectId={projectId!}
           onSuccess={() => router.push(`/projects/${projectId}`)}
+          onSwitchToUpload={() => setStep('upload')}
         />
       )}
     </div>
