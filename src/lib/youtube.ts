@@ -1,12 +1,14 @@
 // OAuth do Google + YouTube Data API v3 via fetch puro (sem SDK googleapis,
-// para não adicionar dependência pesada só por causa de 3 chamadas REST).
+// para não adicionar dependência pesada só por causa de poucas chamadas REST).
 
+import fs from 'fs'
 import { prisma } from './prisma'
 import { encrypt, decrypt } from './crypto'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3'
+const YOUTUBE_UPLOAD_BASE = 'https://www.googleapis.com/upload/youtube/v3/videos'
 
 export interface YoutubeEnv {
   clientId: string
@@ -195,4 +197,95 @@ export async function getValidAccessToken(userId: string): Promise<string> {
   })
 
   return refreshed.access_token
+}
+
+// ---------------------------------------------------------------------------
+// Upload de vídeo (videos.insert) — usa o protocolo de upload resumível em 2
+// passos: 1) inicia a sessão mandando só os metadados (recebe a URL de
+// upload no header Location), 2) manda os bytes do arquivo pra essa URL.
+//
+// Cota: a API do YouTube tem 10.000 unidades/dia por padrão, e cada upload
+// de vídeo custa 1.600 — ou seja, ~6 uploads/dia no limite padrão (dá pra
+// pedir aumento no Google Cloud Console se precisar de mais).
+// ---------------------------------------------------------------------------
+
+// "Entertainment" — categoria padrão pros cortes virais/shorts. Não é
+// configurável pelo usuário por ora (não solicitado).
+const YOUTUBE_CATEGORY_ID = '24'
+
+export interface UploadVideoOptions {
+  title: string
+  description: string
+  tags: string[]
+  // Se estiver a mais de ~1min no futuro, sobe como "private" com esse
+  // publishAt e o YouTube publica sozinho no horário certo (agendamento
+  // nativo da plataforma). Se for agora/passado, sobe direto como "public".
+  publishAt?: Date | null
+}
+
+export interface UploadVideoResult {
+  videoId: string
+  url: string
+}
+
+export async function uploadVideo(accessToken: string, filePath: string, opts: UploadVideoOptions): Promise<UploadVideoResult> {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Arquivo de vídeo não encontrado no servidor: ${filePath}`)
+  }
+  const stats = fs.statSync(filePath)
+  const isScheduled = !!opts.publishAt && opts.publishAt.getTime() > Date.now() + 60_000
+
+  const metadata = {
+    snippet: {
+      title: opts.title.slice(0, 100),
+      description: opts.description.slice(0, 5000),
+      tags: opts.tags,
+      categoryId: YOUTUBE_CATEGORY_ID,
+    },
+    status: isScheduled
+      ? { privacyStatus: 'private', publishAt: opts.publishAt!.toISOString(), selfDeclaredMadeForKids: false }
+      : { privacyStatus: 'public', selfDeclaredMadeForKids: false },
+  }
+
+  // Passo 1: inicia a sessão de upload resumível — só metadados por enquanto.
+  const initRes = await fetch(`${YOUTUBE_UPLOAD_BASE}?uploadType=resumable&part=snippet,status`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': 'video/mp4',
+      'X-Upload-Content-Length': String(stats.size),
+    },
+    body: JSON.stringify(metadata),
+  })
+  if (!initRes.ok) {
+    throw new Error(`Falha ao iniciar upload no YouTube (status ${initRes.status}): ${(await initRes.text()).slice(0, 300)}`)
+  }
+  const uploadUrl = initRes.headers.get('location')
+  if (!uploadUrl) {
+    throw new Error('Google não retornou a URL de upload (header Location ausente).')
+  }
+
+  // Passo 2: envia os bytes do vídeo pra essa URL — duplex:'half' é exigido
+  // pelo fetch nativo do Node quando o body é um stream, não um buffer fixo.
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'video/mp4',
+      'Content-Length': String(stats.size),
+    },
+    body: fs.createReadStream(filePath) as unknown as BodyInit,
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' })
+
+  if (!uploadRes.ok) {
+    throw new Error(`Falha ao enviar o vídeo pro YouTube (status ${uploadRes.status}): ${(await uploadRes.text()).slice(0, 300)}`)
+  }
+
+  const data = await uploadRes.json()
+  if (!data.id) {
+    throw new Error('Resposta inesperada do YouTube ao concluir o upload (sem id).')
+  }
+
+  return { videoId: data.id, url: `https://youtube.com/shorts/${data.id}` }
 }

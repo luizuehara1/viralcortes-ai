@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import { Readable } from 'stream'
 import { prisma } from '@/lib/prisma'
+import { resolveScheduledPostFilePath } from '@/lib/scheduled-post-media'
 
 export const runtime = 'nodejs'
 
@@ -13,24 +14,12 @@ function toWebStream(nodeStream: fs.ReadStream): ReadableStream {
 // da Meta baixam ao criar o container de mídia do Reels
 // (createReelsContainer em src/lib/instagram.ts). O único controle de acesso
 // é o próprio token opaco do ScheduledPost (crypto.randomUUID(), impossível
-// de adivinhar) — nunca aceita o id do clipe/template diretamente.
-async function resolveFilePath(token: string): Promise<string | null> {
-  const post = await prisma.scheduledPost.findUnique({ where: { publicToken: token } })
-  if (!post) return null
-
-  if (post.sourceType === 'CLIP') {
-    // sourceId aponta pro RenderedClip exato escolhido ao agendar (não o
-    // SuggestedClip) — um clipe pode ter vários formatos renderizados.
-    const rendered = await prisma.renderedClip.findUnique({ where: { id: post.sourceId } })
-    return rendered?.filePath ?? null
-  }
-
-  const output = await prisma.templateOutput.findUnique({ where: { id: post.sourceId } })
-  return output?.filePath ?? null
-}
-
+// de adivinhar) — nunca aceita o id do clipe/template diretamente. O YouTube
+// não usa essa rota — o upload é feito direto pro Google (ver
+// src/workers/social-publisher.ts), não por busca de uma URL pública.
 export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
-  const filePath = await resolveFilePath(params.token)
+  const post = await prisma.scheduledPost.findUnique({ where: { publicToken: params.token } })
+  const filePath = post ? await resolveScheduledPostFilePath(post) : null
   if (!filePath || !fs.existsSync(filePath)) {
     return NextResponse.json({ error: 'Mídia não encontrada' }, { status: 404 })
   }

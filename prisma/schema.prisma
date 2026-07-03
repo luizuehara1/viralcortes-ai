@@ -366,13 +366,12 @@ enum ScheduledPostStatus {
   CANCELLED
 }
 
-// Agendamento/plano de publicação — Instagram Reels publica automaticamente
-// (Content Publishing API, ver src/lib/instagram.ts); YouTube Shorts ainda
-// não tem integração automática, então fica como lembrete/rascunho: o
-// usuário baixa o vídeo e a legenda pronta e posta manualmente. sourceId
-// aponta pra um RenderedClip (não o SuggestedClip — um clipe pode ter vários
-// formatos renderizados) ou um TemplateOutput, dependendo de sourceType —
-// sem relação FK direta porque pode apontar pra qualquer um dos dois.
+// Agendamento/plano de publicação — Instagram Reels e YouTube Shorts
+// publicam automaticamente (Content Publishing API / videos.insert, ver
+// src/lib/instagram.ts e src/lib/youtube.ts). sourceId aponta pra um
+// RenderedClip (não o SuggestedClip — um clipe pode ter vários formatos
+// renderizados) ou um TemplateOutput, dependendo de sourceType — sem relação
+// FK direta porque pode apontar pra qualquer um dos dois.
 model ScheduledPost {
   id               String              @id @default(cuid())
   userId           String
@@ -388,8 +387,9 @@ model ScheduledPost {
   scheduledAt      DateTime
   status           ScheduledPostStatus @default(PENDING)
   instagramMediaId String?
-  // Preenchido manualmente (YouTube) ou pelo worker (Instagram, futuramente)
-  // quando o usuário confirma que o post já está no ar.
+  youtubeVideoId   String?
+  // Preenchido pelo worker quando a publicação automática conclui, ou
+  // manualmente caso o usuário opte por postar por conta própria.
   publishedUrl     String?
   notes            String?
   errorMessage     String?

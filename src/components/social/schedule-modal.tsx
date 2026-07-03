@@ -121,9 +121,7 @@ export function ScheduleModal({
         {done ? (
           <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
-            {platform === 'INSTAGRAM_REELS'
-              ? 'Publicação agendada! Acompanhe o status em Integrações.'
-              : 'Salvo! O YouTube ainda não publica automaticamente — baixe o vídeo e a legenda quando chegar a hora, e marque como postado em Integrações.'}
+            Publicação agendada! Acompanhe o status em Integrações.
           </div>
         ) : (
           <>
@@ -149,9 +147,9 @@ export function ScheduleModal({
             </div>
 
             {platform === 'YOUTUBE_SHORTS' && (
-              <p className="text-xs text-yellow-400/90 -mt-2">
-                Publicação automática no YouTube ainda não existe — isso salva um lembrete com tudo
-                pronto (título, descrição, hashtags) pra você postar manualmente.
+              <p className="text-xs text-white/40 -mt-2">
+                Publica como Short (privado com agendamento nativo, se a data for no futuro; público
+                assim que subir, se for agora).
               </p>
             )}
 

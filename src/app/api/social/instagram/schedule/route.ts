@@ -19,11 +19,10 @@ const schema = z.object({
 })
 
 // POST /api/social/instagram/schedule -> agenda a publicação de um clipe
-// renderizado ou resultado do Template Studio. Instagram Reels publica
-// sozinho (enfileira no socialPublishQueue, mesmo pipeline de antes).
-// YouTube Shorts ainda não tem publicação automática — vira um lembrete
-// MANUAL_SCHEDULED com tudo pronto (título/descrição/hashtags) pra postar
-// na mão; por isso não exige conta do Instagram conectada nesse caso.
+// renderizado ou resultado do Template Studio. Instagram Reels (Content
+// Publishing API) e YouTube Shorts (videos.insert) publicam sozinhos —
+// os dois entram no socialPublishQueue, o worker decide o fluxo conforme
+// o platform (ver src/workers/social-publisher.ts).
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -35,13 +34,13 @@ export async function POST(req: NextRequest) {
   }
   const { sourceType, sourceId, platform, title, caption, hashtags, scheduledAt } = parsed.data
 
-  if (platform === 'INSTAGRAM_REELS') {
-    const instagramAccount = await prisma.socialAccount.findUnique({
-      where: { userId_provider: { userId, provider: 'INSTAGRAM' } },
-    })
-    if (!instagramAccount) {
-      return NextResponse.json({ error: 'Conecte sua conta do Instagram antes de agendar uma publicação.' }, { status: 409 })
-    }
+  const provider = platform === 'YOUTUBE_SHORTS' ? 'YOUTUBE' : 'INSTAGRAM'
+  const account = await prisma.socialAccount.findUnique({
+    where: { userId_provider: { userId, provider } },
+  })
+  if (!account) {
+    const platformName = platform === 'YOUTUBE_SHORTS' ? 'YouTube' : 'Instagram'
+    return NextResponse.json({ error: `Conecte sua conta do ${platformName} antes de agendar uma publicação.` }, { status: 409 })
   }
 
   let projectId: string | null = null
@@ -61,9 +60,6 @@ export async function POST(req: NextRequest) {
   const publicToken = crypto.randomUUID()
   const scheduledDate = new Date(scheduledAt)
   const delayMs = scheduledDate.getTime() - Date.now()
-  // YouTube Shorts não tem publicação automática ainda — fica como
-  // lembrete manual em vez de entrar na fila que nunca vai processá-lo.
-  const initialStatus = platform === 'INSTAGRAM_REELS' ? 'PENDING' : 'MANUAL_SCHEDULED'
 
   const post = await prisma.scheduledPost.create({
     data: {
@@ -76,26 +72,24 @@ export async function POST(req: NextRequest) {
       caption,
       hashtags,
       scheduledAt: scheduledDate,
-      status: initialStatus,
+      status: 'PENDING',
       publicToken,
     },
   })
 
-  if (platform === 'INSTAGRAM_REELS') {
-    try {
-      await enqueueSocialPublish(post.id, delayMs)
-    } catch (err: any) {
-      // Se não conseguiu nem enfileirar, o ScheduledPost criado acima nunca
-      // vai disparar — apaga em vez de deixar um registro PENDING órfão, e
-      // devolve o motivo real (ex.: Redis fora do ar / cota estourada) em vez
-      // de um 500 genérico em HTML que o cliente não consegue parsear.
-      await prisma.scheduledPost.delete({ where: { id: post.id } }).catch(() => {})
-      console.error('[instagram/schedule] Falha ao enfileirar publicação:', err.message)
-      return NextResponse.json(
-        { error: `Falha ao agendar: não foi possível enfileirar o job (${err.message}). Tente novamente em instantes.` },
-        { status: 503 }
-      )
-    }
+  try {
+    await enqueueSocialPublish(post.id, delayMs)
+  } catch (err: any) {
+    // Se não conseguiu nem enfileirar, o ScheduledPost criado acima nunca
+    // vai disparar — apaga em vez de deixar um registro PENDING órfão, e
+    // devolve o motivo real (ex.: Redis fora do ar / cota estourada) em vez
+    // de um 500 genérico em HTML que o cliente não consegue parsear.
+    await prisma.scheduledPost.delete({ where: { id: post.id } }).catch(() => {})
+    console.error('[instagram/schedule] Falha ao enfileirar publicação:', err.message)
+    return NextResponse.json(
+      { error: `Falha ao agendar: não foi possível enfileirar o job (${err.message}). Tente novamente em instantes.` },
+      { status: 503 }
+    )
   }
 
   return NextResponse.json({ id: post.id, status: post.status, scheduledAt: post.scheduledAt }, { status: 201 })
