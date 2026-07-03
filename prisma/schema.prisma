@@ -90,6 +90,10 @@ enum VideoStatus {
   PENDING
   UPLOADING
   IMPORTING
+  // Plataforma bloqueou o download automático (anti-bot) — fica esperando o
+  // script downloader local (rodando no PC do dono, com o navegador logado)
+  // buscar esse vídeo e devolver o arquivo pronto via /api/local-downloader.
+  AWAITING_LOCAL_DOWNLOAD
   EXTRACTING_AUDIO
   TRANSCRIBING
   ANALYZING

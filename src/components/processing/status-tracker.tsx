@@ -235,6 +235,16 @@ export function StatusTracker({
             />
           )}
         </div>
+      ) : status === 'AWAITING_LOCAL_DOWNLOAD' ? (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-300">
+          <Zap className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="font-medium">Aguardando download automático</p>
+            <p className="text-sm text-violet-300/70 mt-0.5">
+              Essa plataforma bloqueia downloads automáticos do servidor — o downloader local vai buscar esse vídeo em instantes. Nada pra fazer aqui, isso continua sozinho.
+            </p>
+          </div>
+        </div>
       ) : status === 'FAILED' ? (
         <div className="space-y-3">
           <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">

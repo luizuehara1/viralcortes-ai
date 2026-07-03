@@ -68,6 +68,25 @@ export function createImportWorker() {
         return
       }
       const isYtDlpError = err instanceof YtDlpError
+      const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 1)
+      // Bloqueio anti-bot de plataforma (ex.: Kick) esgotou as tentativas
+      // automáticas — em vez de desistir, deixa esperando o downloader
+      // local (script no PC do dono, com o navegador logado) buscar esse
+      // vídeo em vez de marcar como falha definitiva.
+      if (isFinalAttempt && isYtDlpError && err.code === 'PLATFORM_BLOCKED_ACCESS') {
+        await prisma.sourceVideo
+          .update({
+            where: { id: job.data.sourceVideoId },
+            data: {
+              status: 'AWAITING_LOCAL_DOWNLOAD',
+              errorMessage: null,
+              errorCode: null,
+              technicalError: err.technicalError,
+            },
+          })
+          .catch(console.error)
+        return
+      }
       await prisma.sourceVideo
         .update({
           where: { id: job.data.sourceVideoId },

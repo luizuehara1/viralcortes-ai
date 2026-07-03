@@ -1,0 +1,7 @@
+{
+  "serverUrl": "https://SEU-APP.up.railway.app",
+  "token": "cole aqui o mesmo valor de LOCAL_DOWNLOADER_TOKEN do Railway",
+  "ytDlpPath": "yt-dlp",
+  "browser": "chrome",
+  "pollIntervalMs": 15000
+}

@@ -19,6 +19,9 @@ out/
 # Prisma
 prisma/migrations/
 
+# Downloader local (contém o token de acesso — não versionar)
+local-downloader/config.json
+
 # Misc
 .DS_Store
 *.pem

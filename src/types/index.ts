@@ -2,6 +2,7 @@ export type VideoStatus =
   | 'PENDING'
   | 'UPLOADING'
   | 'IMPORTING'
+  | 'AWAITING_LOCAL_DOWNLOAD'
   | 'EXTRACTING_AUDIO'
   | 'TRANSCRIBING'
   | 'ANALYZING'
@@ -247,6 +248,7 @@ export const VIDEO_STATUS_STEPS: Record<VideoStatus, { label: string; step: numb
   PENDING:          { label: 'Aguardando...', step: 0 },
   UPLOADING:        { label: 'Enviando vídeo...', step: 1 },
   IMPORTING:        { label: 'Importando vídeo...', step: 2 },
+  AWAITING_LOCAL_DOWNLOAD: { label: 'Aguardando download local...', step: 2 },
   EXTRACTING_AUDIO: { label: 'Extraindo áudio...', step: 3 },
   TRANSCRIBING:     { label: 'Transcrevendo...', step: 4 },
   ANALYZING:        { label: 'Detectando melhores momentos...', step: 5 },
