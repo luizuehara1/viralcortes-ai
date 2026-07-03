@@ -26,7 +26,7 @@ export function InstagramConnectCard({ initialAccount }: Props) {
       if (data.ok) {
         setTestResult({ ok: true, message: `Conexão OK — @${data.account.username} respondendo normalmente.` })
         setAccount((prev) =>
-          prev ? { ...prev, accountName: data.account.username, metadata: { accountType: data.account.accountType } } : prev
+          prev ? { ...prev, accountName: data.account.username, accountAvatar: data.account.profilePictureUrl } : prev
         )
       } else {
         setTestResult({ ok: false, message: data.error || 'Falha ao testar a conexão.' })
@@ -88,7 +88,7 @@ export function InstagramConnectCard({ initialAccount }: Props) {
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">@{account.accountName || 'conta_instagram'}</p>
             <p className="text-xs text-white/40 truncate">
-              {account.metadata?.accountType === 'MEDIA_CREATOR' ? 'Conta de Criador de conteúdo' : 'Conta Business'}
+              via Página {account.metadata?.pageName || account.metadata?.pageId || ''}
             </p>
           </div>
         </div>

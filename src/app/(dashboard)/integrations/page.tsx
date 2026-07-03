@@ -40,7 +40,7 @@ export default async function IntegrationsPage({ searchParams }: Props) {
           ...account,
           expiresAt: account.expiresAt ? account.expiresAt.toISOString() : null,
           updatedAt: account.updatedAt.toISOString(),
-          metadata: account.metadata as { accountType?: 'BUSINESS' | 'MEDIA_CREATOR' } | null,
+          metadata: account.metadata as { pageId?: string; pageName?: string } | null,
         }
       : null
 

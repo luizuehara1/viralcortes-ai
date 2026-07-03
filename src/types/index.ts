@@ -76,7 +76,7 @@ export interface SocialAccountSummary {
   scope: string | null
   expiresAt: string | null
   updatedAt: string
-  metadata?: { accountType?: 'BUSINESS' | 'MEDIA_CREATOR' } | null
+  metadata?: { pageId?: string; pageName?: string } | null
 }
 
 // ---------------------------------------------------------------------------

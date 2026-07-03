@@ -6,9 +6,9 @@ import { encrypt } from '@/lib/crypto'
 import {
   exchangeCodeForUserToken,
   exchangeForLongLivedToken,
-  fetchInstagramProfile,
-  InstagramNotProfessionalError,
+  findConnectedInstagramAccount,
   MetaConfigError,
+  NoInstagramBusinessAccountError,
 } from '@/lib/meta'
 import { getAppUrl } from '@/lib/app-url'
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
   const metaError = searchParams.get('error') || searchParams.get('error_description')
   if (metaError) {
-    return redirectWithError(`Autorização recusada pelo Instagram: ${metaError}`)
+    return redirectWithError(`Autorização recusada pela Meta: ${metaError}`)
   }
 
   const code = searchParams.get('code')
@@ -43,31 +43,32 @@ export async function GET(req: NextRequest) {
   try {
     const shortLived = await exchangeCodeForUserToken(code)
     const longLived = await exchangeForLongLivedToken(shortLived.access_token)
-    const profile = await fetchInstagramProfile(longLived.access_token)
+    const instagram = await findConnectedInstagramAccount(longLived.access_token)
 
     const userId = (session.user as any).id
-    const expiresAt = new Date(Date.now() + longLived.expires_in * 1000)
+    const expiresAt = longLived.expires_in ? new Date(Date.now() + longLived.expires_in * 1000) : null
 
     await prisma.socialAccount.upsert({
       where: { userId_provider: { userId, provider: 'INSTAGRAM' } },
       create: {
         userId,
         provider: 'INSTAGRAM',
-        providerAccountId: profile.instagramUserId,
-        accountName: profile.username,
-        accountAvatar: null,
-        accessToken: encrypt(longLived.access_token),
+        providerAccountId: instagram.instagramBusinessAccountId,
+        accountName: instagram.accountName,
+        accountAvatar: instagram.profilePictureUrl,
+        accessToken: encrypt(instagram.pageAccessToken),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { accountType: profile.accountType },
+        metadata: { pageId: instagram.pageId, pageName: instagram.pageName },
       },
       update: {
-        providerAccountId: profile.instagramUserId,
-        accountName: profile.username,
-        accessToken: encrypt(longLived.access_token),
+        providerAccountId: instagram.instagramBusinessAccountId,
+        accountName: instagram.accountName,
+        accountAvatar: instagram.profilePictureUrl,
+        accessToken: encrypt(instagram.pageAccessToken),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { accountType: profile.accountType },
+        metadata: { pageId: instagram.pageId, pageName: instagram.pageName },
       },
     })
 
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('[meta/callback] Falha ao conectar conta do Instagram:', err)
     const message =
-      err instanceof InstagramNotProfessionalError || err instanceof MetaConfigError || err instanceof Error
+      err instanceof NoInstagramBusinessAccountError || err instanceof MetaConfigError || err instanceof Error
         ? err.message
         : 'Erro ao conectar com o Instagram. Tente novamente.'
     return redirectWithError(message)

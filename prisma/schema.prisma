@@ -285,9 +285,9 @@ model SocialAccount {
   scope             String?
   expiresAt         DateTime?
   // Dados extras específicos da plataforma que não cabem nas colunas acima.
-  // Para INSTAGRAM: { accountType: 'BUSINESS' | 'MEDIA_CREATOR' } — login
-  // direto via Instagram API with Instagram Login (accessToken já é o token
-  // da própria conta do Instagram, sem Página do Facebook envolvida).
+  // Para INSTAGRAM: { pageId, pageName } — via Facebook Login for Business
+  // (accessToken salvo é o Page Access Token da Página dona da conta do
+  // Instagram Business).
   metadata          Json?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
