@@ -9,6 +9,8 @@ import { VideoUpload } from '@/components/upload/video-upload'
 import { VideoLinkImport } from '@/components/upload/video-link-import'
 
 const YOUTUBE_REQUIRES_LOGIN_OR_COOKIES = 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES'
+const PLATFORM_BLOCKED_ACCESS = 'PLATFORM_BLOCKED_ACCESS'
+const BLOCKED_IMPORT_CODES = [YOUTUBE_REQUIRES_LOGIN_OR_COOKIES, PLATFORM_BLOCKED_ACCESS]
 
 interface ChunkProgress {
   type: 'TRANSCRIBE' | 'ANALYZE_CLIPS'
@@ -184,14 +186,16 @@ export function StatusTracker({
         </div>
       )}
 
-      {status === 'FAILED' && errorCode === YOUTUBE_REQUIRES_LOGIN_OR_COOKIES ? (
+      {status === 'FAILED' && errorCode !== null && BLOCKED_IMPORT_CODES.includes(errorCode) ? (
         <div className="space-y-3">
           <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
             <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="font-medium">Importação automática bloqueada</p>
               <p className="text-sm text-amber-300/70 mt-0.5">
-                O YouTube bloqueou a importação automática deste vídeo. Use upload manual ou tente outro link público.
+                {errorCode === YOUTUBE_REQUIRES_LOGIN_OR_COOKIES
+                  ? 'O YouTube bloqueou a importação automática deste vídeo. Use upload manual ou tente outro link público.'
+                  : 'Essa plataforma bloqueou a importação automática (proteção anti-bot). Use upload manual ou tente outro link público.'}
               </p>
             </div>
           </div>

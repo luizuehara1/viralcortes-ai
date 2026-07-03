@@ -151,7 +151,7 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
-            {errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES' && onSwitchToUpload && (
+            {(errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES' || errorCode === 'PLATFORM_BLOCKED_ACCESS') && onSwitchToUpload && (
               <button
                 onClick={onSwitchToUpload}
                 className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"

@@ -4,10 +4,13 @@ import fs from 'fs'
 const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp'
 
 export const YOUTUBE_REQUIRES_LOGIN_OR_COOKIES = 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES'
+export const PLATFORM_BLOCKED_ACCESS = 'PLATFORM_BLOCKED_ACCESS'
 
 export const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
   [YOUTUBE_REQUIRES_LOGIN_OR_COOKIES]:
     'Não foi possível importar esse vídeo automaticamente porque o YouTube solicitou verificação/login. Baixe o vídeo manualmente e envie pelo upload do PC.',
+  [PLATFORM_BLOCKED_ACCESS]:
+    'Não foi possível importar esse vídeo automaticamente — a plataforma bloqueou o acesso automatizado (proteção anti-bot). Baixe o vídeo manualmente e envie pelo upload do PC.',
 }
 
 // Sinais de que o YouTube (ou outra plataforma) bloqueou a requisição por
@@ -23,8 +26,20 @@ const BOT_OR_LOGIN_PATTERNS = [
   /login required/i,
 ]
 
+// Bloqueio genérico de outras plataformas (Kick, etc.) — geralmente
+// proteção anti-bot tipo Cloudflare rejeitando a requisição do yt-dlp de
+// cara, sem uma mensagem específica de "login"/"cookies" como o YouTube.
+const GENERIC_PLATFORM_BLOCK_PATTERNS = [
+  /http error 403/i,
+  /\bforbidden\b/i,
+]
+
 function isBotOrLoginBlock(stderr: string): boolean {
   return BOT_OR_LOGIN_PATTERNS.some((p) => p.test(stderr))
+}
+
+function isGenericPlatformBlock(stderr: string): boolean {
+  return GENERIC_PLATFORM_BLOCK_PATTERNS.some((p) => p.test(stderr))
 }
 
 export class YtDlpError extends Error {
@@ -84,6 +99,14 @@ function runYtDlp(args: string[], timeoutMs: number): Promise<string> {
             FRIENDLY_ERROR_MESSAGES[YOUTUBE_REQUIRES_LOGIN_OR_COOKIES],
             stderr.trim(),
             YOUTUBE_REQUIRES_LOGIN_OR_COOKIES
+          ))
+          return
+        }
+        if (isGenericPlatformBlock(stderr)) {
+          reject(new YtDlpError(
+            FRIENDLY_ERROR_MESSAGES[PLATFORM_BLOCKED_ACCESS],
+            stderr.trim(),
+            PLATFORM_BLOCKED_ACCESS
           ))
           return
         }
