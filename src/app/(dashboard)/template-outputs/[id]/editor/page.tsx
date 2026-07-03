@@ -1,8 +1,10 @@
 import { getServerSession } from 'next-auth'
+import fs from 'fs'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { TemplateOutputEditor } from '@/components/editor/template-output-editor'
+import { MediaMissingNotice } from '@/components/editor/media-missing-notice'
 import { DEFAULT_EDITOR_STATE, type EditorState } from '@/types'
 
 interface Props {
@@ -20,6 +22,13 @@ export default async function TemplateOutputEditorPage({ params }: Props) {
   })
 
   if (!output || output.mediaType !== 'VIDEO' || !output.duration) notFound()
+
+  // O registro existe, mas o arquivo pode ter sumido do disco (armazenamento
+  // local efêmero) — sem isso, o player carrega preto e só um erro confuso
+  // aparece depois, ao tentar gerar legenda.
+  if (!fs.existsSync(output.filePath)) {
+    return <MediaMissingNotice backHref="/template-studio" backLabel="Voltar ao Template Studio" />
+  }
 
   const editorState = (output.editorState as EditorState | null) || DEFAULT_EDITOR_STATE
 

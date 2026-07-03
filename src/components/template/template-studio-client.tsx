@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Upload, Wand2, Download, Loader2, ImageIcon, AlertCircle, RefreshCw, Video, CheckCircle2, Pencil, CalendarClock } from 'lucide-react'
+import { Upload, Wand2, Download, Loader2, ImageIcon, AlertCircle, RefreshCw, Video, CheckCircle2, Pencil, Instagram, Youtube } from 'lucide-react'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 
 interface Region {
@@ -74,7 +74,7 @@ export function TemplateStudioClient() {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<GenerateResult | null>(null)
   const [error, setError] = useState('')
-  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
 
   // Facecam auto-split state (only relevant when the template has exactly 2
   // blue regions and the uploaded media is a video). facecamCrop is the
@@ -469,9 +469,9 @@ export function TemplateStudioClient() {
           </a>
 
           {/* Editar/legendar e agendar só fazem sentido pra vídeo — legendas
-              vêm de áudio e a publicação aqui é sempre Reels (vídeo). */}
+              vêm de áudio e a publicação aqui é sempre Reels/Shorts (vídeo). */}
           {result.mediaType === 'video' && (
-            <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+            <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <Link
                 href={`/template-outputs/${result.templateOutputId}/editor`}
                 className="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 font-medium transition-all flex items-center justify-center gap-2 text-sm"
@@ -480,22 +480,31 @@ export function TemplateStudioClient() {
                 Editar/Legendar
               </Link>
               <button
-                onClick={() => setScheduleOpen(true)}
+                onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}
                 className="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 font-medium transition-all flex items-center justify-center gap-2 text-sm"
               >
-                <CalendarClock className="w-3.5 h-3.5" />
-                Agendar no Instagram
+                <Instagram className="w-3.5 h-3.5" />
+                Agendar Instagram
+              </button>
+              <button
+                onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')}
+                className="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 font-medium transition-all flex items-center justify-center gap-2 text-sm"
+              >
+                <Youtube className="w-3.5 h-3.5" />
+                Agendar YouTube
               </button>
             </div>
           )}
         </div>
       )}
 
-      {scheduleOpen && result && (
+      {schedulePlatform && result && (
         <ScheduleModal
           sourceType="TEMPLATE_OUTPUT"
           sourceId={result.templateOutputId}
-          onClose={() => setScheduleOpen(false)}
+          defaultPlatform={schedulePlatform}
+          downloadUrl={result.outputUrl}
+          onClose={() => setSchedulePlatform(null)}
         />
       )}
     </div>

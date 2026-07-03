@@ -341,30 +341,57 @@ enum PostSourceType {
 }
 
 enum PostPlatform {
+  // Mantido por compatibilidade com registros antigos já gravados no banco
+  // (criados antes desta migração) — não usar em código novo, só
+  // INSTAGRAM_REELS/YOUTUBE_SHORTS.
   INSTAGRAM
+  INSTAGRAM_REELS
+  YOUTUBE_SHORTS
 }
 
+// PENDING/PUBLISHING/PUBLISHED/FAILED pertencem ao pipeline automático (hoje
+// só Instagram, via socialPublishQueue). MANUAL_SCHEDULED/POSTED/CANCELLED
+// existem pra plataformas sem publicação automática ainda (YouTube Shorts) —
+// o usuário baixa o vídeo/copia a legenda e posta manualmente, e só marca o
+// status depois. DRAFT existe pra permitir salvar um agendamento sem
+// necessariamente já ter disparado nada.
 enum ScheduledPostStatus {
+  DRAFT
   PENDING
   PUBLISHING
   PUBLISHED
+  MANUAL_SCHEDULED
+  POSTED
   FAILED
+  CANCELLED
 }
 
-// Agendamento de publicação (hoje só Instagram Reels via Content Publishing
-// API). sourceId aponta pra um SuggestedClip (usa o RenderedClip mais
-// adequado) ou um TemplateOutput, dependendo de sourceType — sem relação
-// FK direta porque pode apontar pra qualquer um dos dois.
+// Agendamento/plano de publicação — Instagram Reels publica automaticamente
+// (Content Publishing API, ver src/lib/instagram.ts); YouTube Shorts ainda
+// não tem integração automática, então fica como lembrete/rascunho: o
+// usuário baixa o vídeo e a legenda pronta e posta manualmente. sourceId
+// aponta pra um RenderedClip (não o SuggestedClip — um clipe pode ter vários
+// formatos renderizados) ou um TemplateOutput, dependendo de sourceType —
+// sem relação FK direta porque pode apontar pra qualquer um dos dois.
 model ScheduledPost {
   id               String              @id @default(cuid())
   userId           String
+  // Só preenchido quando sourceType=CLIP (projeto dono do vídeo fonte) — útil
+  // pra exibir/agrupar na listagem sem precisar navegar as relações.
+  projectId        String?
   sourceType       PostSourceType
   sourceId         String
-  platform         PostPlatform        @default(INSTAGRAM)
+  platform         PostPlatform        @default(INSTAGRAM_REELS)
+  title            String?
   caption          String
+  hashtags         String[]            @default([])
   scheduledAt      DateTime
   status           ScheduledPostStatus @default(PENDING)
   instagramMediaId String?
+  // Preenchido manualmente (YouTube) ou pelo worker (Instagram, futuramente)
+  // quando o usuário confirma que o post já está no ar.
+  publishedUrl     String?
+  notes            String?
   errorMessage     String?
   // Token opaco e único usado pela rota pública /api/public/media/[token] —
   // é o único jeito de servir o vídeo pro Instagram baixar (video_url precisa

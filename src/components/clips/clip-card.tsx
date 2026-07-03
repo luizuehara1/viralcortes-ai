@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   TrendingUp, Clock, Download, Play, Sparkles, Copy, Check,
-  Loader2, ChevronDown, ChevronUp, Plus, Share2, Pencil, CalendarClock
+  Loader2, ChevronDown, ChevronUp, Plus, Share2, Pencil, CalendarClock, Instagram, Youtube
 } from 'lucide-react'
 import { EMOTION_LABELS, EMOTION_COLORS, CLIP_FORMAT_LABELS } from '@/types'
 import { formatTimeCode, formatDuration, viralScoreColor, viralScoreBg } from '@/lib/utils'
@@ -52,7 +52,7 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
   const [error, setError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
 
   const duration = clip.endTime - clip.startTime
 
@@ -273,13 +273,22 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
               Gerar outro formato
             </button>
             {scheduleTarget && (
-              <button
-                onClick={() => setScheduleOpen(true)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-              >
-                <CalendarClock className="w-4 h-4" />
-                Agendar no Instagram
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
+                >
+                  <Instagram className="w-3.5 h-3.5" />
+                  Agendar Instagram
+                </button>
+                <button
+                  onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
+                >
+                  <Youtube className="w-3.5 h-3.5" />
+                  Agendar YouTube
+                </button>
+              </div>
             )}
           </div>
         ) : status === 'FAILED' ? (
@@ -311,12 +320,16 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
         />
       )}
 
-      {scheduleOpen && scheduleTarget && (
+      {schedulePlatform && scheduleTarget && (
         <ScheduleModal
           sourceType="CLIP"
           sourceId={scheduleTarget.id}
-          defaultCaption={clip.caption || undefined}
-          onClose={() => setScheduleOpen(false)}
+          defaultPlatform={schedulePlatform}
+          defaultTitle={clip.title}
+          defaultCaption={[clip.caption, clip.description].filter(Boolean).join('\n\n') || undefined}
+          defaultHashtags={clip.hashtags}
+          downloadUrl={`/api/clips/${scheduleTarget.id}/download`}
+          onClose={() => setSchedulePlatform(null)}
         />
       )}
     </div>

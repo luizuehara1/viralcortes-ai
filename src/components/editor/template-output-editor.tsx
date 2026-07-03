@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2, CalendarClock, Loader2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, Loader2 } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
@@ -37,7 +37,7 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [rendering, setRendering] = useState(false)
   const [renderError, setRenderError] = useState('')
-  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   const seekTokenRef = useRef(0)
@@ -106,11 +106,18 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
           <button
-            onClick={() => setScheduleOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+            onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
           >
-            <CalendarClock className="w-4 h-4" />
-            Agendar no Instagram
+            <Instagram className="w-4 h-4" />
+            Instagram
+          </button>
+          <button
+            onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+          >
+            <Youtube className="w-4 h-4" />
+            YouTube
           </button>
           <button
             onClick={applyEdits}
@@ -200,12 +207,14 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
         </div>
       </div>
 
-      {scheduleOpen && (
+      {schedulePlatform && (
         <ScheduleModal
           sourceType="TEMPLATE_OUTPUT"
           sourceId={output.id}
+          defaultPlatform={schedulePlatform}
           defaultCaption={output.caption || ''}
-          onClose={() => setScheduleOpen(false)}
+          downloadUrl={`/api/template-outputs/${output.id}/stream`}
+          onClose={() => setSchedulePlatform(null)}
         />
       )}
     </div>
