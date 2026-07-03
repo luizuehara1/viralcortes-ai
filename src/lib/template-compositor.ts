@@ -382,9 +382,12 @@ async function insertVideo(
         // Esse resultado costuma passar por um segundo encode depois (Editar/
         // Legendar, e a própria plataforma ao publicar) — cada passagem perde
         // qualidade de novo, então esse primeiro encode usa CRF mais baixo
-        // (mais próximo de sem perdas) e preset mais lento (mais eficiente
-        // por bit) do que o das outras renderizações, que só rodam uma vez.
-        '-preset', 'slow',
+        // (mais próximo de sem perdas) que o das outras renderizações. Preset
+        // fica em 'medium' (não 'slow') de propósito — o container roda com
+        // só 1GB de RAM e esse encode já decodifica várias entradas de vídeo
+        // ao mesmo tempo (filtro complexo do template); 'slow' usa mais
+        // memória/CPU por mais tempo, risco real de OOM nesse limite.
+        '-preset', 'medium',
         '-crf', '17',
         '-r', String(OUTPUT_FPS),
         '-fps_mode', 'cfr',
