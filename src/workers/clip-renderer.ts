@@ -75,9 +75,13 @@ async function processClipRender(job: Job) {
 export function createClipWorker() {
   const worker = new Worker('clip-rendering', processClipRender, {
     connection: redisConnection,
-    // Renderizações concorrentes demais competem por CPU no mesmo host e
-    // deixam cada encode mais lento/instável.
-    concurrency: Math.max(1, Number(process.env.RENDER_CONCURRENCY) || 2),
+    // Container roda com só 1GB de RAM, compartilhado com o servidor Next.js
+    // e os outros workers — 2 encodes de ffmpeg em paralelo (cada um
+    // decodificando um vídeo fonte inteiro) já foi motivo de OOM na prática
+    // (ffmpeg morto com SIGKILL). Um de cada vez é mais lento mas não
+    // derruba o container; pode subir via RENDER_CONCURRENCY se o plano
+    // de memória do Railway for aumentado depois.
+    concurrency: Math.max(1, Number(process.env.RENDER_CONCURRENCY) || 1),
   })
 
   worker.on('completed', (job) => {

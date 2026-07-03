@@ -298,7 +298,12 @@ async function insertVideo(
 
   await new Promise<void>((resolve, reject) => {
     const command = ffmpeg()
-    chosenIndexes.forEach((i) => command.input(regionMedia.get(i)!))
+    // Fontes de vídeo (às vezes 1080p+) decodificadas ao mesmo tempo que o
+    // canvas do template já pressionam bastante o 1GB de RAM do container —
+    // limitar threads de decode/encode reduz os buffers internos do
+    // libx264/decoder e evita OOM (visto na prática: ffmpeg morto com
+    // SIGKILL), à custa de um pouco de velocidade.
+    chosenIndexes.forEach((i) => command.input(regionMedia.get(i)!).inputOptions(['-threads', '2']))
     command.input(holeTemplatePath).inputOptions(['-loop 1', `-framerate ${OUTPUT_FPS}`])
 
     const filters: ffmpeg.FilterSpecification[] = []
@@ -336,7 +341,11 @@ async function insertVideo(
       const scaledLabel = `scaled${n}`
       filters.push({
         filter: 'scale',
-        options: `${region.width}:${region.height}:force_original_aspect_ratio=increase:flags=lanczos`,
+        // bilinear em vez de lanczos: lanczos usa bem mais memória/CPU por
+        // frame, e num container de 1GB de RAM isso já foi motivo de OOM
+        // (ffmpeg morto com SIGKILL) — a perda de nitidez é mínima aqui já
+        // que o resultado ainda passa por outro(s) encode(s) depois.
+        options: `${region.width}:${region.height}:force_original_aspect_ratio=increase:flags=bilinear`,
         inputs: normLabel,
         outputs: scaledLabel,
       })
@@ -392,6 +401,7 @@ async function insertVideo(
         '-r', String(OUTPUT_FPS),
         '-fps_mode', 'cfr',
         '-movflags', '+faststart',
+        '-threads', '2',
       ])
     if (hasAudio) command.audioCodec('aac').audioBitrate('256k')
     command.duration(targetDuration)

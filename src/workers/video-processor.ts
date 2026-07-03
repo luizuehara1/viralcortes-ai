@@ -319,7 +319,11 @@ async function processVideo(job: Job) {
 export function createVideoWorker() {
   const worker = new Worker('video-processing', processVideo, {
     connection: redisConnection,
-    concurrency: 2,
+    // Mesmo motivo do ClipWorker: esse pipeline chama ffmpeg pesado
+    // (thumbnail, extração de áudio, split em chunks) e o container só tem
+    // 1GB de RAM — 2 vídeos em paralelo já contribui pro mesmo tipo de OOM
+    // (SIGKILL) visto no render de cortes.
+    concurrency: 1,
   })
 
   worker.on('completed', (job) => {
