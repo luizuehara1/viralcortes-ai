@@ -298,12 +298,12 @@ async function insertVideo(
 
   await new Promise<void>((resolve, reject) => {
     const command = ffmpeg()
-    // Fontes de vídeo (às vezes 1080p+) decodificadas ao mesmo tempo que o
-    // canvas do template já pressionam bastante o 1GB de RAM do container —
-    // limitar threads de decode/encode reduz os buffers internos do
-    // libx264/decoder e evita OOM (visto na prática: ffmpeg morto com
-    // SIGKILL), à custa de um pouco de velocidade.
-    chosenIndexes.forEach((i) => command.input(regionMedia.get(i)!).inputOptions(['-threads', '2']))
+    // Continuou matando com SIGKILL mesmo depois de limitar a 2 threads —
+    // esse composer roda direto na requisição HTTP (não numa fila com
+    // concorrência controlada), então pode coincidir com outro worker
+    // pesado rodando ao mesmo tempo no mesmo container de 1GB. 1 thread de
+    // decode é o mínimo possível (mais lento, mas o menor pico de memória).
+    chosenIndexes.forEach((i) => command.input(regionMedia.get(i)!).inputOptions(['-threads', '1']))
     command.input(holeTemplatePath).inputOptions(['-loop 1', `-framerate ${OUTPUT_FPS}`])
 
     const filters: ffmpeg.FilterSpecification[] = []
@@ -388,20 +388,18 @@ async function insertVideo(
       .videoCodec('libx264')
       .outputOptions([
         '-pix_fmt', 'yuv420p',
-        // Esse resultado costuma passar por um segundo encode depois (Editar/
-        // Legendar, e a própria plataforma ao publicar) — cada passagem perde
-        // qualidade de novo, então esse primeiro encode usa CRF mais baixo
-        // (mais próximo de sem perdas) que o das outras renderizações. Preset
-        // fica em 'medium' (não 'slow') de propósito — o container roda com
-        // só 1GB de RAM e esse encode já decodifica várias entradas de vídeo
-        // ao mesmo tempo (filtro complexo do template); 'slow' usa mais
-        // memória/CPU por mais tempo, risco real de OOM nesse limite.
-        '-preset', 'medium',
-        '-crf', '17',
+        // Continuou sendo morto com SIGKILL (falta de memória) mesmo em
+        // 'medium'/threads=2 — esse composer roda direto na requisição HTTP,
+        // então pode coincidir com outro worker pesado no mesmo container de
+        // 1GB. Prioriza não travar em vez de qualidade máxima: 'veryfast' e
+        // 1 thread usam bem menos memória (o resultado ainda passa por
+        // outro(s) encode(s) depois, então a perda aqui é menos crítica).
+        '-preset', 'veryfast',
+        '-crf', '19',
         '-r', String(OUTPUT_FPS),
         '-fps_mode', 'cfr',
         '-movflags', '+faststart',
-        '-threads', '2',
+        '-threads', '1',
       ])
     if (hasAudio) command.audioCodec('aac').audioBitrate('256k')
     command.duration(targetDuration)
