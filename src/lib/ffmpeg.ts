@@ -6,6 +6,19 @@ import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId } 
 if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
 if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH)
 
+// Um deploy pode trocar o container bem no instante em que um job de
+// renderização começa a rodar — o volume persistente às vezes leva um
+// instante para ficar visível de novo no container novo logo após a troca.
+// Antes de desistir com "arquivo não encontrado", espera um pouco e checa
+// de novo, em vez de falhar na primeira tentativa.
+async function waitForFile(filePath: string, retries = 4, delayMs = 3000): Promise<boolean> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (fs.existsSync(filePath)) return true
+    if (attempt < retries) await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return false
+}
+
 export interface VideoMetadata {
   duration: number
   width: number
@@ -338,7 +351,7 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   } = opts
   const fitMode = opts.fitMode || 'CONTAIN'
 
-  if (!fs.existsSync(inputPath)) {
+  if (!(await waitForFile(inputPath))) {
     throw new Error(`Arquivo de vídeo não encontrado: ${inputPath}`)
   }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
