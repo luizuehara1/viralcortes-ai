@@ -6,14 +6,16 @@ import { encrypt } from '@/lib/crypto'
 import {
   exchangeCodeForUserToken,
   exchangeForLongLivedToken,
-  findConnectedInstagramAccount,
+  fetchInstagramProfile,
+  InstagramNotProfessionalError,
   MetaConfigError,
 } from '@/lib/meta'
+import { getAppUrl } from '@/lib/app-url'
 
 const STATE_COOKIE = 'meta_oauth_state'
 
-function redirectWithError(req: NextRequest, message: string) {
-  const url = new URL('/integrations', req.url)
+function redirectWithError(message: string) {
+  const url = new URL('/integrations', getAppUrl())
   url.searchParams.set('error', message)
   return NextResponse.redirect(url)
 }
@@ -21,13 +23,13 @@ function redirectWithError(req: NextRequest, message: string) {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
-    return NextResponse.redirect(new URL('/login', req.url))
+    return NextResponse.redirect(new URL('/login', getAppUrl()))
   }
 
   const searchParams = req.nextUrl.searchParams
   const metaError = searchParams.get('error') || searchParams.get('error_description')
   if (metaError) {
-    return redirectWithError(req, `Autorização recusada pela Meta: ${metaError}`)
+    return redirectWithError(`Autorização recusada pelo Instagram: ${metaError}`)
   }
 
   const code = searchParams.get('code')
@@ -35,46 +37,49 @@ export async function GET(req: NextRequest) {
   const expectedState = req.cookies.get(STATE_COOKIE)?.value
 
   if (!code || !state || !expectedState || state !== expectedState) {
-    return redirectWithError(req, 'Falha de segurança no fluxo OAuth (state inválido ou expirado). Tente conectar novamente.')
+    return redirectWithError('Falha de segurança no fluxo OAuth (state inválido ou expirado). Tente conectar novamente.')
   }
 
   try {
     const shortLived = await exchangeCodeForUserToken(code)
     const longLived = await exchangeForLongLivedToken(shortLived.access_token)
-    const instagram = await findConnectedInstagramAccount(longLived.access_token)
+    const profile = await fetchInstagramProfile(longLived.access_token)
 
     const userId = (session.user as any).id
-    const expiresAt = longLived.expires_in ? new Date(Date.now() + longLived.expires_in * 1000) : null
+    const expiresAt = new Date(Date.now() + longLived.expires_in * 1000)
 
     await prisma.socialAccount.upsert({
       where: { userId_provider: { userId, provider: 'INSTAGRAM' } },
       create: {
         userId,
         provider: 'INSTAGRAM',
-        providerAccountId: instagram.instagramAccountId,
-        accountName: instagram.instagramUsername,
-        accountAvatar: instagram.instagramProfilePicture,
-        accessToken: encrypt(instagram.pageAccessToken),
+        providerAccountId: profile.instagramUserId,
+        accountName: profile.username,
+        accountAvatar: null,
+        accessToken: encrypt(longLived.access_token),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { facebookPageId: instagram.facebookPageId, facebookPageName: instagram.facebookPageName },
+        metadata: { accountType: profile.accountType },
       },
       update: {
-        providerAccountId: instagram.instagramAccountId,
-        accountName: instagram.instagramUsername,
-        accountAvatar: instagram.instagramProfilePicture,
-        accessToken: encrypt(instagram.pageAccessToken),
+        providerAccountId: profile.instagramUserId,
+        accountName: profile.username,
+        accessToken: encrypt(longLived.access_token),
         scope: process.env.META_SCOPES,
         expiresAt,
-        metadata: { facebookPageId: instagram.facebookPageId, facebookPageName: instagram.facebookPageName },
+        metadata: { accountType: profile.accountType },
       },
     })
 
-    const res = NextResponse.redirect(new URL('/integrations?connected=instagram', req.url))
+    const res = NextResponse.redirect(new URL('/integrations?connected=instagram', getAppUrl()))
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (err) {
-    const message = err instanceof MetaConfigError ? err.message : err instanceof Error ? err.message : 'Erro ao conectar com o Instagram. Tente novamente.'
-    return redirectWithError(req, message)
+    console.error('[meta/callback] Falha ao conectar conta do Instagram:', err)
+    const message =
+      err instanceof InstagramNotProfessionalError || err instanceof MetaConfigError || err instanceof Error
+        ? err.message
+        : 'Erro ao conectar com o Instagram. Tente novamente.'
+    return redirectWithError(message)
   }
 }

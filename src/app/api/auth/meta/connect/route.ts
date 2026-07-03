@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import crypto from 'crypto'
 import { authOptions } from '@/lib/auth'
 import { buildMetaAuthUrl, MetaConfigError } from '@/lib/meta'
+import { getAppUrl } from '@/lib/app-url'
 
 const STATE_COOKIE = 'meta_oauth_state'
 
@@ -29,7 +30,8 @@ export async function GET() {
     return res
   } catch (err) {
     if (err instanceof MetaConfigError) {
-      const url = new URL('/integrations', process.env.NEXTAUTH_URL || 'http://localhost:3000')
+      console.error('[meta/connect] Configuração ausente:', err)
+      const url = new URL('/integrations', getAppUrl())
       url.searchParams.set('error', err.message)
       return NextResponse.redirect(url)
     }
