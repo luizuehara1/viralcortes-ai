@@ -93,6 +93,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Falha ao ler o upload' }, { status: 400 })
   }
 
+  // Modo "Manter original": pula o encaixe no template por completo — a
+  // mídia enviada vira o resultado do jeito que está, mas ainda registrada
+  // como TemplateOutput (mesmo fluxo de editar/legendar/agendar de depois).
+  if (fields.original === 'true') {
+    if (!mediaTempPath || !mediaFilename) {
+      return NextResponse.json({ error: 'Envie uma foto ou vídeo' }, { status: 400 })
+    }
+    const originalId = uuidv4()
+    const originalDir = path.join(TEMPLATES_DIR(), originalId)
+    fs.mkdirSync(originalDir, { recursive: true })
+    const mediaExt = path.extname(mediaFilename) || '.mp4'
+    const outputPath = path.join(originalDir, `output-${uuidv4()}${mediaExt}`)
+    fs.renameSync(mediaTempPath, outputPath)
+    const mediaType = detectMediaType(outputPath)
+
+    try {
+      const templateOutputId = await persistTemplateOutput(userId, outputPath, mediaType)
+      return NextResponse.json(
+        {
+          outputUrl: `/api/template/file/${originalId}/${path.basename(outputPath)}`,
+          mediaType,
+          region: null,
+          templateOutputId,
+        },
+        { status: 201 }
+      )
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message || 'Falha ao processar o arquivo' }, { status: 500 })
+    }
+  }
+
   const templateId = fields.templateId
   if (!templateId || !isSafeTemplateId(templateId)) {
     if (mediaTempPath) fs.rm(mediaTempPath, { force: true }, () => {})

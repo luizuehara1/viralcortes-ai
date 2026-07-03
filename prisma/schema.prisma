@@ -8,15 +8,19 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  credits       Int       @default(10)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  credits        Int       @default(10)
+  // templateId do último template usado no Template Studio (pasta em
+  // uploads/templates/{id}/) — carregado automaticamente na próxima vez em
+  // vez de exigir reenvio, com opção de trocar manualmente.
+  lastTemplateId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   accounts        Account[]
   sessions        Session[]

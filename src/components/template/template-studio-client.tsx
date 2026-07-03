@@ -20,7 +20,12 @@ interface TemplateInfo {
   height: number
   regions: Region[]
   previewUrl: string
+  // true quando veio do último template usado (lembrado automaticamente),
+  // não de um upload novo nem do template de exemplo pela primeira vez.
+  reused?: boolean
 }
+
+type Mode = 'template' | 'original'
 
 interface GenerateResult {
   outputUrl: string
@@ -65,6 +70,7 @@ function xhrUpload(url: string, formData: FormData, onProgress?: (pct: number) =
 }
 
 export function TemplateStudioClient() {
+  const [mode, setMode] = useState<Mode>('template')
   const [template, setTemplate] = useState<TemplateInfo | null>(null)
   const [loadingTemplate, setLoadingTemplate] = useState(true)
   const [selectedRegion, setSelectedRegion] = useState<number | 'all'>(0)
@@ -183,15 +189,25 @@ export function TemplateStudioClient() {
   }
 
   const generate = async () => {
-    if (!template || !mediaFile) return
-    if (needsFacecamSplit && !facecamCrop) return
+    if (!mediaFile) return
+    if (mode === 'template' && !template) return
+    if (mode === 'template' && needsFacecamSplit && !facecamCrop) return
     setGenerating(true)
     setProgress(0)
     setError('')
     setResult(null)
     try {
       const formData = new FormData()
-      formData.append('templateId', template.templateId)
+
+      if (mode === 'original') {
+        formData.append('original', 'true')
+        formData.append('mediaFile', mediaFile)
+        const body = await xhrUpload('/api/template/generate', formData, setProgress)
+        setResult(body)
+        return
+      }
+
+      formData.append('templateId', template!.templateId)
 
       if (needsFacecamSplit && facecamCrop) {
         // Media was already uploaded once during facecam detection — reuse
@@ -225,7 +241,28 @@ export function TemplateStudioClient() {
         </div>
       )}
 
+      {/* Modo: encaixar num template ou usar a mídia do jeito que está */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <button
+          onClick={() => setMode('template')}
+          className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+            mode === 'template' ? 'border-violet-500 bg-violet-500/15' : 'border-white/10 bg-white/3 hover:bg-white/6 text-white/60'
+          }`}
+        >
+          Colocar template
+        </button>
+        <button
+          onClick={() => setMode('original')}
+          className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+            mode === 'original' ? 'border-violet-500 bg-violet-500/15' : 'border-white/10 bg-white/3 hover:bg-white/6 text-white/60'
+          }`}
+        >
+          Manter original
+        </button>
+      </div>
+
       {/* Template preview + detected regions */}
+      {mode === 'template' && (
       <div className="glass rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-sm">1. Template</h2>
@@ -244,6 +281,10 @@ export function TemplateStudioClient() {
             onChange={(e) => e.target.files?.[0] && loadTemplate(e.target.files[0])}
           />
         </div>
+
+        {template?.reused && (
+          <p className="text-xs text-violet-300/70 -mt-2 mb-3">Usando o template da última vez</p>
+        )}
 
         {loadingTemplate ? (
           <div className="aspect-[9/16] max-w-xs mx-auto rounded-xl bg-white/5 flex items-center justify-center">
@@ -312,10 +353,16 @@ export function TemplateStudioClient() {
           </>
         ) : null}
       </div>
+      )}
 
       {/* Media upload */}
       <div className="glass rounded-2xl p-5">
-        <h2 className="font-semibold text-sm mb-4">2. Enviar foto ou vídeo</h2>
+        <h2 className="font-semibold text-sm mb-4">{mode === 'template' ? '2.' : '1.'} Enviar foto ou vídeo</h2>
+        {mode === 'original' && (
+          <p className="text-xs text-white/30 -mt-2 mb-3">
+            A mídia enviada é usada do jeito que está, sem encaixar em nenhuma moldura.
+          </p>
+        )}
         <div
           onClick={() => mediaInputRef.current?.click()}
           className="rounded-xl border-2 border-dashed border-white/10 hover:border-violet-500/30 hover:bg-white/2 transition-all cursor-pointer p-8 text-center"
@@ -345,7 +392,7 @@ export function TemplateStudioClient() {
       </div>
 
       {/* Facecam detection + manual adjustment */}
-      {needsFacecamSplit && mediaFile && mediaPreviewUrl && (
+      {mode === 'template' && needsFacecamSplit && mediaFile && mediaPreviewUrl && (
         <div className="glass rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Video className="w-4 h-4 text-violet-400" />
@@ -438,20 +485,24 @@ export function TemplateStudioClient() {
       {/* Generate */}
       <button
         onClick={generate}
-        disabled={!mediaFile || !template || generating || facecamDetecting || (needsFacecamSplit && !facecamCrop)}
+        disabled={
+          !mediaFile || generating || (mode === 'template' && (!template || facecamDetecting || (needsFacecamSplit && !facecamCrop)))
+        }
         className="w-full py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition-all flex items-center justify-center gap-2"
       >
         {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-        {generating ? `Encaixando... ${progress}%` : 'Encaixar automaticamente'}
+        {generating
+          ? `${mode === 'template' ? 'Encaixando' : 'Processando'}... ${progress}%`
+          : mode === 'template' ? 'Encaixar automaticamente' : 'Usar vídeo original'}
       </button>
 
       {/* Result */}
       {result && (
         <div className="glass rounded-2xl p-5">
-          <h2 className="font-semibold text-sm mb-4">3. Resultado</h2>
+          <h2 className="font-semibold text-sm mb-4">{mode === 'template' ? '3.' : '2.'} Resultado</h2>
           <div
             className="relative mx-auto rounded-xl overflow-hidden max-w-xs bg-black/30"
-            style={{ aspectRatio: template ? `${template.width} / ${template.height}` : undefined }}
+            style={{ aspectRatio: mode === 'template' && template ? `${template.width} / ${template.height}` : '9 / 16' }}
           >
             {result.mediaType === 'video' ? (
               <video src={result.outputUrl} controls autoPlay loop muted className="w-full h-full object-contain" />

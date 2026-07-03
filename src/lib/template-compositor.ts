@@ -311,6 +311,18 @@ async function insertVideo(
     let lastMerge = 'canvas'
     chosenIndexes.forEach((regionIdx, n) => {
       const region = regions[regionIdx]
+      // Muitos vídeos fonte não começam a linha do tempo exatamente em PTS=0
+      // (edição prévia, contêiner com offset, etc.) — sem isso, o overlay
+      // mostra só o canvas preto até o primeiro frame "de verdade" do vídeo
+      // chegar, dando a impressão de que o vídeo carrega/sincroniza atrasado
+      // em vez de aparecer junto com o template desde o primeiro frame.
+      const resetLabel = `reset${n}`
+      filters.push({
+        filter: 'setpts',
+        options: 'PTS-STARTPTS',
+        inputs: `${n}:v`,
+        outputs: resetLabel,
+      })
       // Normalize each source to a constant 30fps before any scaling/overlay
       // so VFR input (common cause of stutter/frame-pacing issues) can't
       // leak through the filter graph.
@@ -318,7 +330,7 @@ async function insertVideo(
       filters.push({
         filter: 'fps',
         options: `fps=${OUTPUT_FPS}`,
-        inputs: `${n}:v`,
+        inputs: resetLabel,
         outputs: normLabel,
       })
       const scaledLabel = `scaled${n}`
@@ -367,13 +379,18 @@ async function insertVideo(
       .videoCodec('libx264')
       .outputOptions([
         '-pix_fmt', 'yuv420p',
-        '-preset', 'medium',
-        '-crf', '20',
+        // Esse resultado costuma passar por um segundo encode depois (Editar/
+        // Legendar, e a própria plataforma ao publicar) — cada passagem perde
+        // qualidade de novo, então esse primeiro encode usa CRF mais baixo
+        // (mais próximo de sem perdas) e preset mais lento (mais eficiente
+        // por bit) do que o das outras renderizações, que só rodam uma vez.
+        '-preset', 'slow',
+        '-crf', '17',
         '-r', String(OUTPUT_FPS),
         '-fps_mode', 'cfr',
         '-movflags', '+faststart',
       ])
-    if (hasAudio) command.audioCodec('aac').audioBitrate('192k')
+    if (hasAudio) command.audioCodec('aac').audioBitrate('256k')
     command.duration(targetDuration)
     command.output(outputPath)
 
