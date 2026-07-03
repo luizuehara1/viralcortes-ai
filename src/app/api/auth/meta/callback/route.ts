@@ -27,9 +27,12 @@ export async function GET(req: NextRequest) {
   }
 
   const searchParams = req.nextUrl.searchParams
-  const metaError = searchParams.get('error') || searchParams.get('error_description')
-  if (metaError) {
-    return redirectWithError(`Autorização recusada pela Meta: ${metaError}`)
+  const metaErrorCode = searchParams.get('error')
+  const metaErrorDescription = searchParams.get('error_description')
+  console.log('[meta/callback] recebeu code?', searchParams.has('code'), '| error:', metaErrorCode ?? '(nenhum)', '| error_description:', metaErrorDescription ?? '(nenhum)')
+
+  if (metaErrorCode || metaErrorDescription) {
+    return redirectWithError(`Autorização recusada pela Meta: ${[metaErrorCode, metaErrorDescription].filter(Boolean).join(' - ')}`)
   }
 
   const code = searchParams.get('code')
@@ -40,11 +43,19 @@ export async function GET(req: NextRequest) {
     return redirectWithError('Falha de segurança no fluxo OAuth (state inválido ou expirado). Tente conectar novamente.')
   }
 
+  let step = 'troca_code_por_token_curto'
   try {
+    console.log('[meta/callback] etapa:', step, '| redirect_uri configurado:', process.env.META_REDIRECT_URI ?? '(ausente)')
     const shortLived = await exchangeCodeForUserToken(code)
-    const longLived = await exchangeForLongLivedToken(shortLived.access_token)
-    const instagram = await findConnectedInstagramAccount(longLived.access_token)
 
+    step = 'troca_por_token_longo'
+    const longLived = await exchangeForLongLivedToken(shortLived.access_token)
+
+    step = 'buscar_paginas_e_instagram'
+    const instagram = await findConnectedInstagramAccount(longLived.access_token)
+    console.log('[meta/callback] página encontrada:', instagram.pageName, '| instagram:', instagram.accountName)
+
+    step = 'salvar_conta'
     const userId = (session.user as any).id
     const expiresAt = longLived.expires_in ? new Date(Date.now() + longLived.expires_in * 1000) : null
 
@@ -76,7 +87,7 @@ export async function GET(req: NextRequest) {
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (err) {
-    console.error('[meta/callback] Falha ao conectar conta do Instagram:', err)
+    console.error(`[meta/callback] Falha na etapa "${step}":`, (err as Error).message)
     const message =
       err instanceof NoInstagramBusinessAccountError || err instanceof MetaConfigError || err instanceof Error
         ? err.message

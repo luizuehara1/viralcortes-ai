@@ -63,6 +63,19 @@ export interface GoogleTokens {
   token_type: string
 }
 
+// Extrai { error, error_description } do corpo de erro do Google (formato
+// padrão OAuth2 — ex.: "redirect_uri_mismatch", "invalid_client",
+// "invalid_grant") para expor o motivo real em vez de só o status HTTP.
+async function parseGoogleOAuthError(res: Response): Promise<string> {
+  const body = await res.text()
+  try {
+    const parsed = JSON.parse(body)
+    const parts = [parsed.error, parsed.error_description].filter(Boolean)
+    if (parts.length > 0) return parts.join(': ')
+  } catch {}
+  return body.slice(0, 300) || `status ${res.status}`
+}
+
 export async function exchangeCodeForTokens(code: string): Promise<GoogleTokens> {
   const env = requireYoutubeEnv()
   const res = await fetch(GOOGLE_TOKEN_URL, {
@@ -78,7 +91,7 @@ export async function exchangeCodeForTokens(code: string): Promise<GoogleTokens>
   })
 
   if (!res.ok) {
-    throw new Error(`Falha ao trocar code por tokens (status ${res.status})`)
+    throw new Error(`Falha ao trocar code por tokens: ${await parseGoogleOAuthError(res)}`)
   }
   return res.json()
 }
@@ -119,7 +132,7 @@ export async function fetchOwnChannel(accessToken: string): Promise<YoutubeChann
   })
 
   if (!res.ok) {
-    throw new Error(`Falha ao consultar canal do YouTube (status ${res.status})`)
+    throw new Error(`Falha ao consultar canal do YouTube (status ${res.status}): ${(await res.text()).slice(0, 300)}`)
   }
 
   const data = await res.json()
