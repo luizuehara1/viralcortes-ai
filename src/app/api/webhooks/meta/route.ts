@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Webhook público da Meta/Instagram — rota separada do OAuth
-// (/api/auth/meta/callback, que continua intocado). Não exige sessão, não
-// redireciona, nunca retorna HTML: só texto puro (verificação) ou JSON (POST).
+// (/api/auth/instagram/callback, que continua intocado). Não exige sessão,
+// não redireciona, nunca retorna HTML: só texto puro (verificação) ou JSON (POST).
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || 'viralcortes_meta_verify_2026'
 
 // Handshake de verificação que a Meta faz ao salvar a Callback URL no painel.

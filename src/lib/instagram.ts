@@ -1,13 +1,18 @@
 // OAuth via "Instagram API with Instagram Login" (Instagram Business
 // Login) — login direto com a conta profissional do Instagram, sem
-// depender de uma Página do Facebook vinculada. Via fetch puro, sem SDK.
+// depender de uma Página do Facebook nem do App ID principal da Meta. Via
+// fetch puro, sem SDK.
+//
+// Importante: este app tem DOIS app IDs distintos no painel da Meta —
+// META_APP_ID (app "de Facebook") e INSTAGRAM_APP_ID (gerado em "Instagram
+// → API setup with Instagram login"). Usar o META_APP_ID aqui faz o
+// instagram.com/oauth/authorize recusar com "Invalid platform app". Este
+// módulo só deve usar as variáveis INSTAGRAM_*, nunca META_*.
 //
 // Não usar o fluxo antigo "Facebook Login for Business"
 // (facebook.com/dialog/oauth + me/accounts + instagram_business_account) —
-// o app da Meta deste projeto foi reconfigurado para o produto "Instagram
-// API with Instagram Login", cujos scopes (instagram_business_basic,
-// instagram_business_content_publish) e endpoints (instagram.com/oauth,
-// api.instagram.com, graph.instagram.com) são diferentes do fluxo antigo.
+// nem os scopes antigos (pages_show_list, pages_read_engagement,
+// instagram_basic, instagram_content_publish).
 
 import { prisma } from './prisma'
 import { decrypt } from './crypto'
@@ -18,35 +23,35 @@ const IG_AUTH_URL = 'https://www.instagram.com/oauth/authorize'
 const IG_CODE_EXCHANGE_URL = 'https://api.instagram.com/oauth/access_token'
 const IG_LONG_LIVED_URL = 'https://graph.instagram.com/access_token'
 
-export interface MetaEnv {
+export interface InstagramEnv {
   appId: string
   appSecret: string
   redirectUri: string
   scopes: string
 }
 
-const REQUIRED_VARS = ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI', 'META_SCOPES'] as const
+const REQUIRED_VARS = ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI', 'INSTAGRAM_SCOPES'] as const
 
-export class MetaConfigError extends Error {}
+export class InstagramConfigError extends Error {}
 
 // Mensagem amigável em pt-BR listando exatamente quais variáveis faltam.
-export function requireMetaEnv(): MetaEnv {
+export function requireInstagramEnv(): InstagramEnv {
   const missing = REQUIRED_VARS.filter((key) => !process.env[key])
   if (missing.length > 0) {
-    throw new MetaConfigError(
-      `Integração com Instagram/Meta não configurada. Faltam as variáveis de ambiente: ${missing.join(', ')}.`
+    throw new InstagramConfigError(
+      `Integração com Instagram não configurada. Faltam as variáveis de ambiente: ${missing.join(', ')}.`
     )
   }
   return {
-    appId: process.env.META_APP_ID!,
-    appSecret: process.env.META_APP_SECRET!,
-    redirectUri: process.env.META_REDIRECT_URI!,
-    scopes: process.env.META_SCOPES!,
+    appId: process.env.INSTAGRAM_APP_ID!,
+    appSecret: process.env.INSTAGRAM_APP_SECRET!,
+    redirectUri: process.env.INSTAGRAM_REDIRECT_URI!,
+    scopes: process.env.INSTAGRAM_SCOPES!,
   }
 }
 
-export function buildMetaAuthUrl(state: string): string {
-  const env = requireMetaEnv()
+export function buildInstagramAuthUrl(state: string): string {
+  const env = requireInstagramEnv()
   const params = new URLSearchParams({
     client_id: env.appId,
     redirect_uri: env.redirectUri,
@@ -72,7 +77,7 @@ function stripCodeSuffix(code: string): string {
 }
 
 export async function exchangeCodeForShortLivedToken(code: string): Promise<InstagramShortLivedToken> {
-  const env = requireMetaEnv()
+  const env = requireInstagramEnv()
   const res = await fetch(IG_CODE_EXCHANGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -105,8 +110,10 @@ interface InstagramLongLivedToken {
 }
 
 // Troca o token de curta duração (~1h) por um de longa duração (~60 dias).
+// Não é um refresh_token no sentido OAuth2 padrão — este mesmo token de
+// longa duração é renovado antes de expirar via /refresh_access_token.
 export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<InstagramLongLivedToken> {
-  const env = requireMetaEnv()
+  const env = requireInstagramEnv()
   const params = new URLSearchParams({
     grant_type: 'ig_exchange_token',
     client_secret: env.appSecret,
@@ -147,8 +154,8 @@ export async function fetchOwnInstagramAccount(userId: string, accessToken: stri
   }
 }
 
-// Retorna o access_token salvo (token direto da conta do Instagram, não
-// mais um Page Access Token) e o ID da conta profissional do Instagram.
+// Retorna o access_token salvo (token direto da conta do Instagram) e o ID
+// da conta profissional do Instagram.
 export async function getStoredInstagramToken(userId: string): Promise<{ accessToken: string; instagramUserId: string }> {
   const account = await prisma.socialAccount.findUnique({
     where: { userId_provider: { userId, provider: 'INSTAGRAM' } },

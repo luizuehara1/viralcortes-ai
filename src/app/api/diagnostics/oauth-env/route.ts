@@ -8,8 +8,8 @@ import { getAppUrl } from '@/lib/app-url'
 // exato que está configurado (para bater com o que foi cadastrado no Google
 // Cloud / Meta Developers). Nunca mostra client secret, tokens ou API keys.
 // Exige sessão logada — não é uma rota pública.
-const SECRET_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'META_APP_ID', 'META_APP_SECRET'] as const
-const PLAIN_VARS = ['GOOGLE_REDIRECT_URI', 'YOUTUBE_UPLOAD_SCOPE', 'META_REDIRECT_URI', 'META_SCOPES'] as const
+const SECRET_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET'] as const
+const PLAIN_VARS = ['GOOGLE_REDIRECT_URI', 'YOUTUBE_UPLOAD_SCOPE', 'INSTAGRAM_REDIRECT_URI', 'INSTAGRAM_SCOPES'] as const
 
 export async function GET() {
   const session = await getServerSession(authOptions)

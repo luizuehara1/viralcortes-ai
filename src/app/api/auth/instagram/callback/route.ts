@@ -7,16 +7,20 @@ import {
   exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
   fetchOwnInstagramAccount,
-  MetaConfigError,
-} from '@/lib/meta'
+  InstagramConfigError,
+} from '@/lib/instagram'
 import { getAppUrl } from '@/lib/app-url'
 
-const STATE_COOKIE = 'meta_oauth_state'
+const STATE_COOKIE = 'ig_oauth_state'
 
 function redirectWithError(message: string) {
   const url = new URL('/integrations', getAppUrl())
   url.searchParams.set('error', message)
   return NextResponse.redirect(url)
+}
+
+function lastDigits(value: string, count = 4): string {
+  return value.length > count ? `...${value.slice(-count)}` : value
 }
 
 export async function GET(req: NextRequest) {
@@ -26,12 +30,23 @@ export async function GET(req: NextRequest) {
   }
 
   const searchParams = req.nextUrl.searchParams
-  const metaErrorCode = searchParams.get('error')
-  const metaErrorDescription = searchParams.get('error_description')
-  console.log('[meta/callback] recebeu code?', searchParams.has('code'), '| error:', metaErrorCode ?? '(nenhum)', '| error_description:', metaErrorDescription ?? '(nenhum)')
+  const igErrorCode = searchParams.get('error')
+  const igErrorReason = searchParams.get('error_reason')
+  const igErrorDescription = searchParams.get('error_description')
+  console.log(
+    '[instagram/callback] recebeu code?', searchParams.has('code'),
+    '| redirect_uri configurado:', process.env.INSTAGRAM_REDIRECT_URI,
+    '| client_id:', lastDigits(process.env.INSTAGRAM_APP_ID || ''),
+    '| scopes:', process.env.INSTAGRAM_SCOPES,
+    '| error:', igErrorCode ?? '(nenhum)',
+    '| error_reason:', igErrorReason ?? '(nenhum)',
+    '| error_description:', igErrorDescription ?? '(nenhum)'
+  )
 
-  if (metaErrorCode || metaErrorDescription) {
-    return redirectWithError(`Autorização recusada pela Meta: ${[metaErrorCode, metaErrorDescription].filter(Boolean).join(' - ')}`)
+  if (igErrorCode || igErrorReason || igErrorDescription) {
+    return redirectWithError(
+      `Autorização recusada pelo Instagram: ${[igErrorCode, igErrorReason, igErrorDescription].filter(Boolean).join(' - ')}`
+    )
   }
 
   const code = searchParams.get('code')
@@ -44,15 +59,16 @@ export async function GET(req: NextRequest) {
 
   let step = 'troca_code_por_token_curto'
   try {
-    console.log('[meta/callback] etapa:', step, '| redirect_uri configurado:', process.env.META_REDIRECT_URI ?? '(ausente)')
+    console.log('[instagram/callback] etapa:', step, '| endpoint: https://api.instagram.com/oauth/access_token')
     const shortLived = await exchangeCodeForShortLivedToken(code)
 
     step = 'troca_por_token_longo'
+    console.log('[instagram/callback] etapa:', step, '| endpoint: https://graph.instagram.com/access_token')
     const longLived = await exchangeForLongLivedToken(shortLived.access_token)
 
     step = 'buscar_conta_instagram'
     const instagram = await fetchOwnInstagramAccount(shortLived.user_id, longLived.access_token)
-    console.log('[meta/callback] instagram conectado:', instagram.accountName)
+    console.log('[instagram/callback] instagram conectado:', instagram.accountName)
 
     step = 'salvar_conta'
     const userId = (session.user as any).id
@@ -67,7 +83,9 @@ export async function GET(req: NextRequest) {
         accountName: instagram.accountName,
         accountAvatar: instagram.profilePictureUrl,
         accessToken: encrypt(longLived.access_token),
-        scope: process.env.META_SCOPES,
+        // Este fluxo não tem refresh_token — o próprio token de longa
+        // duração é renovado (não substituído) antes de expirar.
+        scope: shortLived.permissions || process.env.INSTAGRAM_SCOPES,
         expiresAt,
       },
       update: {
@@ -75,7 +93,7 @@ export async function GET(req: NextRequest) {
         accountName: instagram.accountName,
         accountAvatar: instagram.profilePictureUrl,
         accessToken: encrypt(longLived.access_token),
-        scope: process.env.META_SCOPES,
+        scope: shortLived.permissions || process.env.INSTAGRAM_SCOPES,
         expiresAt,
       },
     })
@@ -84,9 +102,12 @@ export async function GET(req: NextRequest) {
     res.cookies.delete(STATE_COOKIE)
     return res
   } catch (err) {
-    console.error(`[meta/callback] Falha na etapa "${step}":`, (err as Error).message)
+    // Log técnico completo no servidor — nunca inclui INSTAGRAM_APP_SECRET,
+    // access_token ou refresh_token, só a mensagem de erro construída em
+    // lib/instagram.ts (que já traz o motivo real do Instagram) e a etapa.
+    console.error(`[instagram/callback] Falha na etapa "${step}":`, (err as Error).message)
     const message =
-      err instanceof MetaConfigError || err instanceof Error
+      err instanceof InstagramConfigError || err instanceof Error
         ? err.message
         : 'Erro ao conectar com o Instagram. Tente novamente.'
     return redirectWithError(message)

@@ -105,7 +105,7 @@ export function InstagramConnectCard({ initialAccount }: Props) {
       <div className="flex items-center gap-2">
         {!isConnected ? (
           <a
-            href="/api/auth/meta/connect"
+            href="/api/auth/instagram"
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-sm font-medium transition-colors"
           >
             <Instagram className="w-4 h-4" />
