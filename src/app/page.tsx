@@ -188,9 +188,18 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-8 px-6 text-center">
+      <footer className="border-t border-white/5 py-8 px-6 text-center space-y-2">
         <p className="text-white/30 text-sm">
-          © 2025 ViralCortes AI · Apenas para conteúdo próprio ou com autorização.
+          © 2026 ViralCortes AI · Apenas para conteúdo próprio ou com autorização.
+        </p>
+        <p className="text-white/30 text-sm">
+          <Link href="/terms" className="hover:text-white/50 transition-colors">
+            Termos de Uso
+          </Link>
+          {' · '}
+          <Link href="/privacy" className="hover:text-white/50 transition-colors">
+            Política de Privacidade
+          </Link>
         </p>
       </footer>
     </div>
