@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   // método de verificação por HTML, complementar ao arquivo em
   // public/tiktok-developers-site-verification.txt (método por arquivo).
   other: {
-    'tiktok-developers-site-verification': 'vmKBGMQo9tKGkkV2Rs8eIXfwOxfSMLGs',
+    'tiktok-developers-site-verification': 'qHFjzWAS9uFqr6n8xoeIkOx8HJ7jee9P',
   },
 }
 
