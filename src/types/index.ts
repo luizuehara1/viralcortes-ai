@@ -90,6 +90,27 @@ export interface SocialAccountSummary {
 
 export type TextOverlayAnimation = 'none' | 'fade' | 'pop' | 'slide'
 
+// Cada id mapeia pra um arquivo de fonte real instalado no container (ver
+// resolveFontPath em src/lib/ffmpeg.ts) — cshFamily é só a aproximação usada
+// no preview do navegador (fontes do sistema do usuário, não o arquivo real
+// que o FFmpeg queima no vídeo final).
+export type FontFamilyId = 'dejavu-sans' | 'liberation-sans' | 'liberation-serif' | 'freemono'
+
+export interface FontOption {
+  id: FontFamilyId
+  label: string
+  cssFamily: string
+}
+
+export const FONT_OPTIONS: FontOption[] = [
+  { id: 'dejavu-sans', label: 'DejaVu Sans (padrão)', cssFamily: 'Verdana, Arial, sans-serif' },
+  { id: 'liberation-sans', label: 'Liberation Sans (estilo Arial)', cssFamily: 'Arial, Helvetica, sans-serif' },
+  { id: 'liberation-serif', label: 'Liberation Serif (estilo Times)', cssFamily: 'Georgia, "Times New Roman", serif' },
+  { id: 'freemono', label: 'FreeMono (monoespaçada)', cssFamily: '"Courier New", monospace' },
+]
+
+export const DEFAULT_FONT_FAMILY: FontFamilyId = 'dejavu-sans'
+
 export interface TextOverlay {
   id: string
   text: string
@@ -101,6 +122,9 @@ export interface TextOverlay {
   color: string
   strokeColor: string
   animation: TextOverlayAnimation
+  // Opcional pra compatibilidade com overlays salvos antes dessa opção
+  // existir — sempre tratar undefined como DEFAULT_FONT_FAMILY.
+  fontFamily?: FontFamilyId
 }
 
 export interface CaptionWord {
@@ -117,6 +141,7 @@ export interface CaptionStyle {
   highlightColor: string // cor da palavra ativa (efeito "karaokê")
   strokeColor: string
   position: CaptionPosition
+  fontFamily?: FontFamilyId
 }
 
 export interface CaptionSegment {
@@ -164,6 +189,7 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   highlightColor: '#FFE400',
   strokeColor: '#000000',
   position: 'bottom',
+  fontFamily: DEFAULT_FONT_FAMILY,
 }
 
 export const DEFAULT_EDITOR_STATE: EditorState = {

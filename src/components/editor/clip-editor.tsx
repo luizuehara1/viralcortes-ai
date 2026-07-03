@@ -131,6 +131,12 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
             overlays={editorState.textOverlays}
             captions={editorState.captions}
             captionStyle={editorState.captionStyle}
+            onOverlayMove={(id, x, y) =>
+              setEditorState((s) => ({
+                ...s,
+                textOverlays: s.textOverlays.map((o) => (o.id === id ? { ...o, x, y } : o)),
+              }))
+            }
           />
           <div className="glass rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-white/40">

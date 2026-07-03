@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { TextOverlay, CaptionSegment, CaptionStyle } from '@/types'
+import { FONT_OPTIONS, DEFAULT_FONT_FAMILY, type TextOverlay, type CaptionSegment, type CaptionStyle, type FontFamilyId } from '@/types'
 
 interface SeekRequest {
   time: number // segundos, relativo ao início do clipe
@@ -23,6 +23,18 @@ interface Props {
   overlays: TextOverlay[]
   captions: CaptionSegment[]
   captionStyle: CaptionStyle
+  // Arrastar o texto direto no preview (em vez de só pelos sliders X/Y do
+  // painel) — omitido = overlays não ficam arrastáveis (ex.: se um dia essa
+  // preview for usada só pra visualização).
+  onOverlayMove?: (id: string, x: number, y: number) => void
+}
+
+const FONT_CSS_FAMILY: Record<FontFamilyId, string> = Object.fromEntries(
+  FONT_OPTIONS.map((f) => [f.id, f.cssFamily])
+) as Record<FontFamilyId, string>
+
+function cssFontFamily(fontFamily?: FontFamilyId): string {
+  return FONT_CSS_FAMILY[fontFamily || DEFAULT_FONT_FAMILY]
 }
 
 const CAPTION_POSITION_TOP: Record<CaptionStyle['position'], string> = {
@@ -49,11 +61,13 @@ export function VideoPreviewPlayer({
   overlays,
   captions,
   captionStyle,
+  onOverlayMove,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const [scale, setScale] = useState(1)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -93,6 +107,38 @@ export function VideoPreviewPlayer({
     else video.pause()
   }, [playing])
 
+  // Arrastar o overlay direto no preview — mais intuitivo que só os sliders
+  // X/Y do painel. Ouve mousemove/mouseup na window (não só no elemento)
+  // porque o cursor sai da caixa do texto facilmente durante o arraste.
+  useEffect(() => {
+    if (!draggingId || !onOverlayMove) return
+
+    const handleMove = (clientX: number, clientY: number) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      const y = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
+      onOverlayMove(draggingId, x, y)
+    }
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      if (touch) handleMove(touch.clientX, touch.clientY)
+    }
+    const stopDragging = () => setDraggingId(null)
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', stopDragging)
+    window.addEventListener('touchmove', onTouchMove)
+    window.addEventListener('touchend', stopDragging)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', stopDragging)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', stopDragging)
+    }
+  }, [draggingId, onOverlayMove])
+
   const handleTimeUpdate = () => {
     const video = videoRef.current
     if (!video) return
@@ -125,15 +171,21 @@ export function VideoPreviewPlayer({
       {visibleOverlays.map((overlay) => (
         <div
           key={overlay.id}
-          className="absolute pointer-events-none font-bold text-center leading-tight"
+          onMouseDown={onOverlayMove ? (e) => { e.preventDefault(); setDraggingId(overlay.id) } : undefined}
+          onTouchStart={onOverlayMove ? () => setDraggingId(overlay.id) : undefined}
+          className={`absolute font-bold text-center leading-tight select-none ${
+            onOverlayMove ? 'cursor-move' : 'pointer-events-none'
+          } ${draggingId === overlay.id ? 'outline outline-2 outline-violet-400 outline-dashed' : ''}`}
           style={{
             left: `${overlay.x * 100}%`,
             top: `${overlay.y * 100}%`,
             transform: 'translate(-50%, -50%)',
             color: overlay.color,
+            fontFamily: cssFontFamily(overlay.fontFamily),
             WebkitTextStroke: `${2 * scale}px ${overlay.strokeColor}`,
             fontSize: `${overlay.fontSize * scale}px`,
             maxWidth: '90%',
+            zIndex: 10,
           }}
         >
           {overlay.text}
@@ -147,6 +199,7 @@ export function VideoPreviewPlayer({
             top: CAPTION_POSITION_TOP[captionStyle.position],
             transform: 'translate(-50%, -50%)',
             color: captionStyle.highlightColor,
+            fontFamily: cssFontFamily(captionStyle.fontFamily),
             WebkitTextStroke: `${3 * scale}px ${captionStyle.strokeColor}`,
             fontSize: `${captionStyle.fontSize * scale}px`,
           }}

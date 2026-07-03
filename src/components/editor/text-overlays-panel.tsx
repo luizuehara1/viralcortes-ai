@@ -1,7 +1,7 @@
 'use client'
 
 import { Plus, Trash2, Type } from 'lucide-react'
-import type { TextOverlay } from '@/types'
+import { FONT_OPTIONS, DEFAULT_FONT_FAMILY, type TextOverlay } from '@/types'
 
 interface Props {
   overlays: TextOverlay[]
@@ -27,6 +27,7 @@ export function TextOverlaysPanel({ overlays, duration, currentTime, onChange }:
         color: '#FFFFFF',
         strokeColor: '#000000',
         animation: 'none',
+        fontFamily: DEFAULT_FONT_FAMILY,
       },
     ])
   }
@@ -61,6 +62,16 @@ export function TextOverlaysPanel({ overlays, duration, currentTime, onChange }:
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            <select
+              value={overlay.fontFamily || DEFAULT_FONT_FAMILY}
+              onChange={(e) => updateOverlay(overlay.id, { fontFamily: e.target.value as TextOverlay['fontFamily'] })}
+              className="w-full text-xs bg-white/5 rounded-lg px-2 py-1.5 text-white/70"
+            >
+              {FONT_OPTIONS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
 
             <div className="flex items-center gap-2 text-xs text-white/40">
               <input

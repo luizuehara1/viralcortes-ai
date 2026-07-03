@@ -1,13 +1,17 @@
 FROM node:20-bookworm-slim
 
-# ffmpeg (render/transcodificação), python3+pip (yt-dlp), fonts-dejavu-core
-# (fonte usada pelo drawtext do FFmpeg em src/lib/ffmpeg.ts — sem ela, o
-# editor renderiza sem legendas/overlays queimados).
+# ffmpeg (render/transcodificação), python3+pip (yt-dlp), fontes usadas pelo
+# drawtext do FFmpeg em src/lib/ffmpeg.ts (seletor de fonte no editor de
+# legendas/textos — sem elas, o editor renderiza sem overlays queimados):
+# fonts-dejavu-core (padrão), fonts-liberation (estilo Arial/Times,
+# métrica-compatível), fonts-freefont-ttf (FreeMono).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       python3 \
       python3-pip \
       fonts-dejavu-core \
+      fonts-liberation \
+      fonts-freefont-ttf \
       ca-certificates \
       bash \
     && rm -rf /var/lib/apt/lists/* \

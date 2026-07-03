@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
-import type { TextOverlay, CaptionSegment, CaptionStyle, Effect } from '@/types'
+import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId } from '@/types'
 
 if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
 if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH)
@@ -259,19 +259,48 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
 // drawtext resolves fonts through Fontconfig by default, which isn't
 // configured on plain Windows ffmpeg builds ("Cannot load default config
 // file"). Pointing fontfile= at a real font file bypasses Fontconfig entirely.
-let cachedFontPath: string | null | undefined
-function resolveFontPath(): string | null {
-  if (cachedFontPath !== undefined) return cachedFontPath
-  const candidates = [
+//
+// Cada família tem sua própria lista de candidatos (caminho real no
+// container Linux via apt — ver Dockerfile — e um equivalente do Windows,
+// pra funcionar em dev local também). FFMPEG_FONT_PATH continua valendo só
+// pra 'dejavu-sans' (override manual do caso sem nenhum pacote instalado).
+const FONT_CANDIDATES: Record<FontFamilyId, string[]> = {
+  'dejavu-sans': [
     process.env.FFMPEG_FONT_PATH,
-    'C:/Windows/Fonts/arialbd.ttf',
-    'C:/Windows/Fonts/arial.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    'C:/Windows/Fonts/arialbd.ttf',
+    'C:/Windows/Fonts/arial.ttf',
     '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
-  ].filter(Boolean) as string[]
-  cachedFontPath = candidates.find((p) => fs.existsSync(p)) ?? null
-  return cachedFontPath
+  ].filter(Boolean) as string[],
+  'liberation-sans': [
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    'C:/Windows/Fonts/arialbd.ttf',
+  ],
+  'liberation-serif': [
+    '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf',
+    'C:/Windows/Fonts/timesbd.ttf',
+  ],
+  freemono: [
+    '/usr/share/fonts/truetype/freefont/FreeMonoBold.ttf',
+    'C:/Windows/Fonts/courbd.ttf',
+  ],
+}
+
+const cachedFontPaths = new Map<FontFamilyId, string | null>()
+
+function resolveFontPath(fontFamily?: FontFamilyId): string | null {
+  const family = fontFamily && FONT_CANDIDATES[fontFamily] ? fontFamily : 'dejavu-sans'
+  if (cachedFontPaths.has(family)) return cachedFontPaths.get(family)!
+
+  let resolved = FONT_CANDIDATES[family].find((p) => fs.existsSync(p)) ?? null
+  // Família pedida não tem nenhum arquivo instalado — cai pro padrão em vez
+  // de simplesmente não desenhar texto nenhum.
+  if (!resolved && family !== 'dejavu-sans') {
+    resolved = resolveFontPath('dejavu-sans')
+  }
+  cachedFontPaths.set(family, resolved)
+  return resolved
 }
 
 function escapeFontPathForFilter(p: string): string {
@@ -424,51 +453,51 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   if ((editorOverlays && editorOverlays.length) || (editorCaptions && editorCaptions.length) || (editorEffects && editorEffects.length)) {
     const { width: frameW, height: frameH } = await getFrameSize()
     const scale = frameW / 1080 // overlays/legendas são definidos pensando num frame de referência de 1080px
-    const fontPath = resolveFontPath()
-    if (!fontPath) {
-      console.warn('[ffmpeg] Nenhuma fonte encontrada — overlays/legendas do editor não serão queimados. Defina FFMPEG_FONT_PATH.')
-    }
-    const fontFileClause = fontPath ? `:fontfile='${escapeFontPathForFilter(fontPath)}'` : ''
     const escapeDrawtext = (text: string) => text.replace(/'/g, "\\'").replace(/:/g, '\\:')
+    // Cada overlay/estilo de legenda pode ter sua própria fonte (seletor no
+    // editor) — resolve por item em vez de uma fonte única global.
+    const fontFileClauseFor = (fontFamily?: FontFamilyId) => {
+      const fontPath = resolveFontPath(fontFamily)
+      return fontPath ? `:fontfile='${escapeFontPathForFilter(fontPath)}'` : ''
+    }
 
     const editorFilters: string[] = []
 
-    if (fontPath) {
-      for (const overlay of editorOverlays || []) {
-        const x = Math.round(overlay.x * frameW)
-        const y = Math.round(overlay.y * frameH)
-        const fontSize = Math.max(8, Math.round(overlay.fontSize * scale))
-        editorFilters.push(
-          `drawtext=text='${escapeDrawtext(overlay.text)}'${fontFileClause}` +
-          `:fontsize=${fontSize}:fontcolor=${overlay.color}` +
-          `:bordercolor=${overlay.strokeColor}:borderw=2` +
-          `:x=${x}:y=${y}` +
-          `:enable='between(t,${overlay.startTime},${overlay.endTime})'`
-        )
-      }
+    for (const overlay of editorOverlays || []) {
+      const x = Math.round(overlay.x * frameW)
+      const y = Math.round(overlay.y * frameH)
+      const fontSize = Math.max(8, Math.round(overlay.fontSize * scale))
+      editorFilters.push(
+        `drawtext=text='${escapeDrawtext(overlay.text)}'${fontFileClauseFor(overlay.fontFamily)}` +
+        `:fontsize=${fontSize}:fontcolor=${overlay.color}` +
+        `:bordercolor=${overlay.strokeColor}:borderw=2` +
+        `:x=${x}:y=${y}` +
+        `:enable='between(t,${overlay.startTime},${overlay.endTime})'`
+      )
+    }
 
-      // Legendas: uma palavra grande por vez, centralizada — aproximação do
-      // efeito "karaokê" viral do CapCut. Destacar palavra a palavra dentro
-      // de uma frase já desenhada exigiria posicionamento por caractere, que
-      // o drawtext do FFmpeg não calcula de forma confiável.
-      const style = editorCaptionStyle
-      if (style && editorCaptions) {
-        const fontSize = Math.max(8, Math.round(style.fontSize * scale))
-        const yExpr =
-          style.position === 'top' ? `${Math.round(frameH * 0.08)}`
-          : style.position === 'center' ? '(h-text_h)/2'
-          : `h-text_h-${Math.round(frameH * 0.12)}`
+    // Legendas: uma palavra grande por vez, centralizada — aproximação do
+    // efeito "karaokê" viral do CapCut. Destacar palavra a palavra dentro
+    // de uma frase já desenhada exigiria posicionamento por caractere, que
+    // o drawtext do FFmpeg não calcula de forma confiável.
+    const style = editorCaptionStyle
+    if (style && editorCaptions) {
+      const fontSize = Math.max(8, Math.round(style.fontSize * scale))
+      const captionFontFileClause = fontFileClauseFor(style.fontFamily)
+      const yExpr =
+        style.position === 'top' ? `${Math.round(frameH * 0.08)}`
+        : style.position === 'center' ? '(h-text_h)/2'
+        : `h-text_h-${Math.round(frameH * 0.12)}`
 
-        for (const segment of editorCaptions) {
-          for (const word of segment.words) {
-            editorFilters.push(
-              `drawtext=text='${escapeDrawtext(word.word)}'${fontFileClause}` +
-              `:fontsize=${fontSize}:fontcolor=${style.highlightColor}` +
-              `:bordercolor=${style.strokeColor}:borderw=3` +
-              `:x=(w-text_w)/2:y=${yExpr}` +
-              `:enable='between(t,${word.start},${word.end})'`
-            )
-          }
+      for (const segment of editorCaptions) {
+        for (const word of segment.words) {
+          editorFilters.push(
+            `drawtext=text='${escapeDrawtext(word.word)}'${captionFontFileClause}` +
+            `:fontsize=${fontSize}:fontcolor=${style.highlightColor}` +
+            `:bordercolor=${style.strokeColor}:borderw=3` +
+            `:x=(w-text_w)/2:y=${yExpr}` +
+            `:enable='between(t,${word.start},${word.end})'`
+          )
         }
       }
     }
@@ -482,15 +511,28 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
           `:enable='between(t,${effect.startTime},${effect.endTime})'`
         )
       } else if (effect.type === 'zoomPan') {
-        // Ken Burns simplificado: encolhe a janela de crop ao longo do tempo
-        // (zoom-in) usando expressões avaliadas por frame. Aplicado por cima
-        // do frame já composto — em CONTAIN pode "zoomar" nas barras pretas,
-        // efeito colateral aceitável para uma primeira versão.
+        // Ken Burns simplificado, em 2 passos porque nem todo filtro aceita
+        // as mesmas opções: (1) crop não tem a opção eval, então não dá pra
+        // encolher a janela do crop diretamente com uma expressão que varia
+        // por frame ("Option 'eval' not found"); (2) scale não suporta
+        // timeline (a opção enable — "Timeline ('enable' option) not
+        // supported with filter 'scale'"), testado direto com o binário do
+        // FFmpeg. Solução: cresce o frame com scale (eval=frame, sem enable —
+        // a condição de tempo vai embutida na própria expressão via
+        // if(between(...))), depois recorta de volta pro tamanho original
+        // com crop de w/h FIXOS (só x/y variam, que o crop já avalia por
+        // frame nativamente, sem precisar de eval nem enable). Fora da
+        // janela de tempo o fator de zoom vira 1 (scale vira no-op) e o crop
+        // seguinte é uma recorte idêntico ao tamanho de entrada — efeito
+        // liga/desliga sem depender de timeline em nenhum dos dois filtros.
         const p = effect.params as { fromScale: number; toScale: number }
         const zoomExpr = `(${p.fromScale}+(${p.toScale}-${p.fromScale})*(t-${effect.startTime})/${dur})`
+        const zoomFactor = `if(between(t,${effect.startTime},${effect.endTime}),${zoomExpr},1)`
         editorFilters.push(
-          `crop=w='iw/${zoomExpr}':h='ih/${zoomExpr}':x='(iw-iw/${zoomExpr})/2':y='(ih-ih/${zoomExpr})/2'` +
-          `:eval=frame:enable='between(t,${effect.startTime},${effect.endTime})'`
+          `scale=w='iw*${zoomFactor}':h='ih*${zoomFactor}':eval=frame`
+        )
+        editorFilters.push(
+          `crop=${frameW}:${frameH}:x='(iw-${frameW})/2':y='(ih-${frameH})/2'`
         )
       }
     }

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, Wand2 } from 'lucide-react'
-import type { CaptionSegment, CaptionStyle, CaptionPosition } from '@/types'
+import { FONT_OPTIONS, DEFAULT_FONT_FAMILY, type CaptionSegment, type CaptionStyle, type CaptionPosition } from '@/types'
 
 interface Props {
   // URL da rota que gera as legendas — /api/clips/[id]/captions ou
@@ -80,6 +80,19 @@ export function CaptionsPanel({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-white/40 mb-1.5 block">Fonte</label>
+            <select
+              value={captionStyle.fontFamily || DEFAULT_FONT_FAMILY}
+              onChange={(e) => onStyleChange({ ...captionStyle, fontFamily: e.target.value as CaptionStyle['fontFamily'] })}
+              className="w-full text-xs bg-white/5 rounded-lg px-2 py-1.5 text-white/70"
+            >
+              {FONT_OPTIONS.map((f) => (
+                <option key={f.id} value={f.id}>{f.label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-4">

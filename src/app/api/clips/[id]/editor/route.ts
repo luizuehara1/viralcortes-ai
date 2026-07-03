@@ -44,6 +44,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   })
 }
 
+const fontFamilySchema = z.enum(['dejavu-sans', 'liberation-sans', 'liberation-serif', 'freemono']).optional()
+
 const textOverlaySchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -55,6 +57,7 @@ const textOverlaySchema = z.object({
   color: z.string(),
   strokeColor: z.string(),
   animation: z.enum(['none', 'fade', 'pop', 'slide']),
+  fontFamily: fontFamilySchema,
 })
 
 const captionWordSchema = z.object({
@@ -75,6 +78,7 @@ const captionStyleSchema = z.object({
   highlightColor: z.string(),
   strokeColor: z.string(),
   position: z.enum(['top', 'center', 'bottom']),
+  fontFamily: fontFamilySchema,
 })
 
 const effectSchema = z.object({
