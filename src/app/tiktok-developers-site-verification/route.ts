@@ -3,7 +3,7 @@
 // intercepta esta rota).
 export async function GET() {
   return new Response(
-    'tiktok-developers-site-verification=EZnVBtat59J9vN92LTS5rX8wwNnX7Wb5',
+    'tiktok-developers-site-verification=vmKBGMQo9tKGkkV2Rs8eIXfwOxfSMLGs',
     {
       status: 200,
       headers: {

@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   description:
     'Transforme suas lives e vídeos longos em cortes virais para TikTok, Reels e Shorts com IA.',
   keywords: 'cortes virais, ai, tiktok, reels, shorts, live, vídeo',
+  // Verificação de domínio do TikTok Developers via meta tag — cobre o
+  // método de verificação por HTML, complementar ao arquivo em
+  // public/tiktok-developers-site-verification.txt (método por arquivo).
+  other: {
+    'tiktok-developers-site-verification': 'vmKBGMQo9tKGkkV2Rs8eIXfwOxfSMLGs',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
