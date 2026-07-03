@@ -10,9 +10,11 @@ out/
 .env.local
 .env.*.local
 
-# Uploads e clips (não versionar arquivos de vídeo)
-uploads/
-clips/
+# Uploads e clips (não versionar arquivos de vídeo) — ancorado na raiz do
+# repo com "/" na frente, senão casa com qualquer pasta "clips"/"uploads"
+# em qualquer nível (ex.: src/components/clips/, que é código de verdade).
+/uploads/
+/clips/
 
 # Prisma
 prisma/migrations/

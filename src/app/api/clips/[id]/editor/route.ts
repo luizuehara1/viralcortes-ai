@@ -1,0 +1,117 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+import type { EditorState } from '@/types'
+import { mergeEditorState } from '@/lib/editor-state'
+
+// GET  /api/clips/:id/editor  -> dados pro editor abrir (clipe + estado salvo)
+// PATCH /api/clips/:id/editor -> autosave do estado do editor (merge parcial)
+
+async function loadOwnedClip(clipId: string, userId: string) {
+  return prisma.suggestedClip.findFirst({
+    where: { id: clipId, sourceVideo: { project: { userId } } },
+    include: { sourceVideo: { select: { id: true, filePath: true, duration: true } } },
+  })
+}
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const userId = (session.user as any).id
+
+  const clip = await loadOwnedClip(params.id, userId)
+  if (!clip) return NextResponse.json({ error: 'Clipe não encontrado' }, { status: 404 })
+  if (!clip.sourceVideo.filePath) {
+    return NextResponse.json({ error: 'Vídeo fonte não disponível para preview' }, { status: 409 })
+  }
+
+  const editorState = mergeEditorState(clip.editorState, {})
+
+  return NextResponse.json({
+    clip: {
+      id: clip.id,
+      title: clip.title,
+      startTime: clip.startTime,
+      endTime: clip.endTime,
+      caption: clip.caption,
+      status: clip.status,
+    },
+    sourceVideoId: clip.sourceVideo.id,
+    sourceVideoDuration: clip.sourceVideo.duration,
+    editorState,
+  })
+}
+
+const textOverlaySchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  startTime: z.number(),
+  endTime: z.number(),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  fontSize: z.number().positive(),
+  color: z.string(),
+  strokeColor: z.string(),
+  animation: z.enum(['none', 'fade', 'pop', 'slide']),
+})
+
+const captionWordSchema = z.object({
+  word: z.string(),
+  start: z.number(),
+  end: z.number(),
+})
+
+const captionSegmentSchema = z.object({
+  id: z.string(),
+  words: z.array(captionWordSchema),
+  editedText: z.string().optional(),
+})
+
+const captionStyleSchema = z.object({
+  fontSize: z.number().positive(),
+  color: z.string(),
+  highlightColor: z.string(),
+  strokeColor: z.string(),
+  position: z.enum(['top', 'center', 'bottom']),
+})
+
+const effectSchema = z.object({
+  id: z.string(),
+  type: z.enum(['colorFilter', 'zoomPan']),
+  startTime: z.number(),
+  endTime: z.number(),
+  params: z.record(z.number()),
+})
+
+const patchSchema = z.object({
+  textOverlays: z.array(textOverlaySchema).optional(),
+  captions: z.array(captionSegmentSchema).optional(),
+  captionStyle: captionStyleSchema.optional(),
+  effects: z.array(effectSchema).optional(),
+})
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const userId = (session.user as any).id
+
+  const clip = await loadOwnedClip(params.id, userId)
+  if (!clip) return NextResponse.json({ error: 'Clipe não encontrado' }, { status: 404 })
+
+  const body = await req.json().catch(() => null)
+  const parsed = patchSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Estado do editor inválido', details: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const nextState = mergeEditorState(clip.editorState, parsed.data as Partial<EditorState>)
+
+  await prisma.suggestedClip.update({
+    where: { id: params.id },
+    data: { editorState: nextState as any },
+  })
+
+  return NextResponse.json({ editorState: nextState })
+}
