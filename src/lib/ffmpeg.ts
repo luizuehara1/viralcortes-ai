@@ -466,7 +466,14 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   if ((editorOverlays && editorOverlays.length) || (editorCaptions && editorCaptions.length) || (editorEffects && editorEffects.length)) {
     const { width: frameW, height: frameH } = await getFrameSize()
     const scale = frameW / 1080 // overlays/legendas são definidos pensando num frame de referência de 1080px
-    const escapeDrawtext = (text: string) => text.replace(/'/g, "\\'").replace(/:/g, '\\:')
+    // O texto inteiro vai entre aspas simples (text='...') no filtro do
+    // ffmpeg. Uma aspa simples literal dentro de um trecho já entre aspas
+    // simples não pode ser escapada com "\'" (não funciona — quebra o
+    // parser do filtro, visto na prática com "Missing ')' ... in 'between(t'"
+    // ao legendar uma palavra com apóstrofo tipo "Let's"). O jeito correto é
+    // fechar a aspa, inserir a aspa literal escapada fora dela, e reabrir:
+    // 'Let' + \' + 's' vira Let'\''s.
+    const escapeDrawtext = (text: string) => text.replace(/'/g, "'\\''").replace(/:/g, '\\:')
     // Cada overlay/estilo de legenda pode ter sua própria fonte (seletor no
     // editor) — resolve por item em vez de uma fonte única global.
     const fontFileClauseFor = (fontFamily?: FontFamilyId) => {
