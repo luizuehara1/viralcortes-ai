@@ -4,6 +4,7 @@ import { Clapperboard, Pencil, Wand2 } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { EmptyState } from '@/components/ui/empty-state'
+import { EditorUploadCard } from '@/components/editor/editor-upload-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,17 +42,25 @@ export default async function EditorHubPage() {
         <p className="text-white/50 text-sm mt-1">Escolha um corte ou resultado de template pra editar — camadas, zoom, crop, legendas e efeitos.</p>
       </div>
 
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium text-white/60">Começar uma edição</h2>
+          <p className="text-xs text-white/30 mt-0.5">Envie um vídeo do seu computador ou escolha um resultado já gerado.</p>
+        </div>
+        <EditorUploadCard />
+      </section>
+
       {isEmpty && (
         <EmptyState
           icon={Clapperboard}
-          title="Nada pra editar ainda"
-          description="Gere um corte num projeto ou monte um resultado no Template Studio pra abrir o editor."
+          title="Nada pra continuar ainda"
+          description="Gere um corte num projeto ou monte um resultado no Template Studio — ou envie um vídeo acima pra começar do zero."
         />
       )}
 
       {clips.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-white/60">Cortes</h2>
+          <h2 className="text-sm font-medium text-white/60">Cortes gerados</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {clips.map((clip) => (
               <Link
