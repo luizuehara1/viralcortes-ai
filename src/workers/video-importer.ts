@@ -74,8 +74,11 @@ export function createImportWorker() {
       // Bloqueio anti-bot de plataforma (ex.: Kick) é permanente — não faz
       // sentido esperar as tentativas automáticas esgotarem (mesmo erro toda
       // vez). Já na primeira falha, deixa esperando o downloader local
-      // (script no PC do dono, com o navegador logado) em vez de desistir.
-      if (isYtDlpError && err.code === 'PLATFORM_BLOCKED_ACCESS') {
+      // (script no PC do dono, com o navegador logado) em vez de desistir —
+      // cobre tanto bloqueio genérico (Kick etc.) quanto o do YouTube
+      // especificamente (pede login/verificação), já que o mesmo script usa
+      // cookies do navegador e serve pros dois casos.
+      if (isYtDlpError && (err.code === 'PLATFORM_BLOCKED_ACCESS' || err.code === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES')) {
         await prisma.sourceVideo
           .update({
             where: { id: job.data.sourceVideoId },

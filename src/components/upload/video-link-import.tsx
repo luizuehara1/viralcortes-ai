@@ -174,7 +174,7 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
-            {errorCode === 'PLATFORM_BLOCKED_ACCESS' && (
+            {(errorCode === 'PLATFORM_BLOCKED_ACCESS' || errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES') && (
               <button
                 onClick={importAnyway}
                 disabled={creating}
