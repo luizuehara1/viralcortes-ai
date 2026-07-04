@@ -1,7 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Loader2, CalendarClock, AlertCircle, CheckCircle2, Copy, Check, Download, Instagram, Youtube } from 'lucide-react'
+import { X, CalendarClock, CheckCircle2, Copy, Check, Download, Instagram, Youtube } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
+import { Button } from '@/components/ui/button'
+import { ErrorState } from '@/components/ui/error-state'
 
 type Platform = 'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS'
 
@@ -99,11 +102,8 @@ export function ScheduleModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto"
-      onClick={(e) => e.target === e.currentTarget && !submitting && onClose()}
-    >
-      <div className="glass rounded-2xl p-6 w-full max-w-md space-y-5 border border-white/10 my-8">
+    <Modal onClose={onClose} closable={false} maxWidth="max-w-md">
+      <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg flex items-center gap-2">
             <CalendarClock className="w-5 h-5 text-violet-400" />
@@ -145,6 +145,7 @@ export function ScheduleModal({
                 YouTube Shorts
               </button>
             </div>
+
 
             {platform === 'YOUTUBE_SHORTS' && (
               <p className="text-xs text-white/40 -mt-2">
@@ -212,45 +213,28 @@ export function ScheduleModal({
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={copyCaption}
-                className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <Button onClick={copyCaption} variant="secondary" size="sm" icon={copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}>
                 {copied ? 'Copiado!' : 'Copiar legenda'}
-              </button>
+              </Button>
               {downloadUrl ? (
-                <a
-                  href={downloadUrl}
-                  download
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Baixar vídeo
+                <a href={downloadUrl} download>
+                  <Button variant="secondary" size="sm" icon={<Download className="w-3.5 h-3.5" />} className="w-full">
+                    Baixar vídeo
+                  </Button>
                 </a>
               ) : (
                 <div />
               )}
             </div>
 
-            {error && (
-              <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <ErrorState message={error} />}
 
-            <button
-              onClick={submit}
-              disabled={submitting || !caption.trim()}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+            <Button onClick={submit} disabled={!caption.trim()} loading={submitting} icon={<CalendarClock className="w-4 h-4" />} className="w-full" size="lg">
               {submitting ? 'Salvando...' : 'Salvar agendamento'}
-            </button>
+            </Button>
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }

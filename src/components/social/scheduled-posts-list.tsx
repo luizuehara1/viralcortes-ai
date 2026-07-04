@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { CalendarClock, CheckCircle2, XCircle, Loader2, Clock, RefreshCw, Instagram, Youtube, BadgeCheck } from 'lucide-react'
+import { GlassCard } from '@/components/ui/glass-card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/loading-state'
 
 type Status = 'DRAFT' | 'PENDING' | 'PUBLISHING' | 'PUBLISHED' | 'MANUAL_SCHEDULED' | 'POSTED' | 'FAILED' | 'CANCELLED'
 type Platform = 'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | 'INSTAGRAM'
@@ -52,6 +56,17 @@ const PLATFORM_ICON: Record<Platform, React.ReactNode> = {
   YOUTUBE_SHORTS: <Youtube className="w-3.5 h-3.5" />,
 }
 
+const STATUS_TONE: Record<Status, 'neutral' | 'success' | 'error' | 'warning' | 'violet'> = {
+  DRAFT: 'neutral',
+  PENDING: 'neutral',
+  PUBLISHING: 'violet',
+  PUBLISHED: 'success',
+  MANUAL_SCHEDULED: 'warning',
+  POSTED: 'success',
+  FAILED: 'error',
+  CANCELLED: 'neutral',
+}
+
 // Lista simples dos agendamentos do usuário — sem polling automático (dá pra
 // atualizar com o botão), já que publicação é algo que roda em background.
 export function ScheduledPostsList() {
@@ -87,7 +102,7 @@ export function ScheduledPostsList() {
   if (!loading && (!posts || posts.length === 0)) return null
 
   return (
-    <div className="glass rounded-2xl p-5 space-y-3">
+    <GlassCard className="p-5 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-sm flex items-center gap-2">
           <CalendarClock className="w-4 h-4 text-violet-400" />
@@ -103,9 +118,7 @@ export function ScheduledPostsList() {
       </div>
 
       {loading && !posts ? (
-        <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-5 h-5 animate-spin text-white/30" />
-        </div>
+        <LoadingState message="Carregando agendamentos..." className="py-6" />
       ) : (
         <div className="space-y-2">
           {posts!.map((post) => (
@@ -116,8 +129,7 @@ export function ScheduledPostsList() {
                   <span className="flex items-center gap-1">{PLATFORM_ICON[post.platform]} {PLATFORM_LABEL[post.platform]}</span>
                   <span>·</span>
                   <span>{post.sourceType === 'CLIP' ? 'Corte' : 'Template'}</span>
-                  <span>·</span>
-                  <span>{STATUS_LABEL[post.status]}</span>
+                  <Badge tone={STATUS_TONE[post.status]}>{STATUS_LABEL[post.status]}</Badge>
                   <span>·</span>
                   <span>{new Date(post.scheduledAt).toLocaleString('pt-BR')}</span>
                 </div>
@@ -126,20 +138,22 @@ export function ScheduledPostsList() {
                   <p className="text-xs text-red-400/80 mt-1">{post.errorMessage}</p>
                 )}
                 {post.status === 'MANUAL_SCHEDULED' && (
-                  <button
+                  <Button
                     onClick={() => markPosted(post.id)}
-                    disabled={markingId === post.id}
-                    className="mt-2 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-green-500/20 hover:text-green-300 text-white/50 transition-colors disabled:opacity-50"
+                    loading={markingId === post.id}
+                    variant="ghost"
+                    size="sm"
+                    icon={<BadgeCheck className="w-3 h-3" />}
+                    className="mt-2 !px-2.5"
                   >
-                    {markingId === post.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <BadgeCheck className="w-3 h-3" />}
                     Marcar como postado
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </GlassCard>
   )
 }

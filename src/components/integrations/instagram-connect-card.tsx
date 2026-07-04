@@ -2,8 +2,11 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Instagram, Loader2, CheckCircle2, Unlink } from 'lucide-react'
+import { Instagram, CheckCircle2, Unlink } from 'lucide-react'
 import type { SocialAccountSummary } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { GlassCard } from '@/components/ui/glass-card'
 
 interface Props {
   initialAccount: SocialAccountSummary | null
@@ -50,7 +53,7 @@ export function InstagramConnectCard({ initialAccount }: Props) {
   }
 
   return (
-    <div className="glass rounded-2xl p-6 border border-white/10 space-y-4">
+    <GlassCard className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-pink-600/15 flex items-center justify-center">
@@ -62,14 +65,9 @@ export function InstagramConnectCard({ initialAccount }: Props) {
           </div>
         </div>
 
-        {isConnected ? (
-          <span className="flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-2.5 py-1 rounded-lg">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Conectado
-          </span>
-        ) : (
-          <span className="text-xs font-medium text-white/40 bg-white/5 px-2.5 py-1 rounded-lg">Não conectado</span>
-        )}
+        <Badge tone={isConnected ? 'success' : 'neutral'} dot>
+          {isConnected ? 'Conectado' : 'Não conectado'}
+        </Badge>
       </div>
 
       {isConnected && account && (
@@ -104,34 +102,20 @@ export function InstagramConnectCard({ initialAccount }: Props) {
 
       <div className="flex items-center gap-2">
         {!isConnected ? (
-          <a
-            href="/api/auth/instagram"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-sm font-medium transition-colors"
-          >
-            <Instagram className="w-4 h-4" />
-            Conectar Instagram
+          <a href="/api/auth/instagram">
+            <Button icon={<Instagram className="w-4 h-4" />}>Conectar Instagram</Button>
           </a>
         ) : (
           <>
-            <button
-              onClick={handleTest}
-              disabled={testing}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-600 disabled:opacity-50 text-sm font-medium transition-colors"
-            >
-              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            <Button onClick={handleTest} loading={testing} icon={<CheckCircle2 className="w-4 h-4" />}>
               Testar conexão
-            </button>
-            <button
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-50 text-sm font-medium text-white/60 transition-colors"
-            >
-              {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlink className="w-4 h-4" />}
+            </Button>
+            <Button onClick={handleDisconnect} loading={disconnecting} variant="secondary" icon={<Unlink className="w-4 h-4" />}>
               Desconectar
-            </button>
+            </Button>
           </>
         )}
       </div>
-    </div>
+    </GlassCard>
   )
 }

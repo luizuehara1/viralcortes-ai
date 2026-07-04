@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Loader2, Wand2, ShieldCheck } from 'lucide-react'
+import { Wand2, ShieldCheck } from 'lucide-react'
 import type { ClipFormat, FitMode, SplitLayoutMode } from '@/types'
 import { CLIP_FORMAT_LABELS, FIT_MODE_LABELS, SPLIT_LAYOUT_LABELS } from '@/types'
+import { Modal } from '@/components/ui/modal'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   onClose: () => void
@@ -33,22 +35,7 @@ export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
   const [layoutMode, setLayoutMode] = useState<SplitLayoutMode | null>(null)
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && !submitting && onClose()}
-    >
-      <div className="glass rounded-2xl p-6 w-full max-w-md space-y-5 border border-white/10">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg">Escolha o formato do corte</h2>
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="p-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white transition-colors disabled:opacity-50"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    <Modal onClose={!submitting ? onClose : undefined} closable={!submitting} title="Escolha o formato do corte" maxWidth="max-w-md">
         <div className="grid grid-cols-2 gap-2.5">
           {FORMATS.map((f) => (
             <button
@@ -132,15 +119,9 @@ export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
           <span>Áudio original mantido · 30 FPS constante · sem legendas ou textos automáticos</span>
         </div>
 
-        <button
-          onClick={() => onConfirm(format, fitMode, layoutMode)}
-          disabled={submitting}
-          className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-2"
-        >
-          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+        <Button onClick={() => onConfirm(format, fitMode, layoutMode)} loading={submitting} icon={<Wand2 className="w-4 h-4" />} className="w-full" size="lg">
           {submitting ? 'Enfileirando...' : 'Gerar corte'}
-        </button>
-      </div>
-    </div>
+        </Button>
+    </Modal>
   )
 }
