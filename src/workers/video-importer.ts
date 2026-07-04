@@ -58,22 +58,24 @@ export function createImportWorker() {
   })
 
   worker.on('failed', async (job, err) => {
-    console.error(`[Importer] Job ${job?.id} falhou:`, err.message)
+    console.error(`[Importer] Job ${job?.id} falhou (tentativa ${job?.attemptsMade}/${job?.opts.attempts}):`, err.message)
     if (job?.data?.sourceVideoId) {
       const current = await prisma.sourceVideo
         .findUnique({ where: { id: job.data.sourceVideoId }, select: { status: true } })
         .catch(() => null)
-      if (current?.status === 'COMPLETED') {
-        console.warn(`[Importer] Job ${job.id} falhou mas o vídeo ${job.data.sourceVideoId} já está COMPLETED — ignorando.`)
+      // Já saiu do estado "em andamento" por outro caminho (ex.: o downloader
+      // local já completou, ou já terminou o processamento) — não pisar
+      // nesse progresso com uma falha atrasada de uma tentativa antiga.
+      if (current && current.status !== 'IMPORTING') {
+        console.warn(`[Importer] Job ${job.id} falhou mas o vídeo ${job.data.sourceVideoId} já está em '${current.status}' — ignorando.`)
         return
       }
       const isYtDlpError = err instanceof YtDlpError
-      const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 1)
-      // Bloqueio anti-bot de plataforma (ex.: Kick) esgotou as tentativas
-      // automáticas — em vez de desistir, deixa esperando o downloader
-      // local (script no PC do dono, com o navegador logado) buscar esse
-      // vídeo em vez de marcar como falha definitiva.
-      if (isFinalAttempt && isYtDlpError && err.code === 'PLATFORM_BLOCKED_ACCESS') {
+      // Bloqueio anti-bot de plataforma (ex.: Kick) é permanente — não faz
+      // sentido esperar as tentativas automáticas esgotarem (mesmo erro toda
+      // vez). Já na primeira falha, deixa esperando o downloader local
+      // (script no PC do dono, com o navegador logado) em vez de desistir.
+      if (isYtDlpError && err.code === 'PLATFORM_BLOCKED_ACCESS') {
         await prisma.sourceVideo
           .update({
             where: { id: job.data.sourceVideoId },
@@ -87,6 +89,11 @@ export function createImportWorker() {
           .catch(console.error)
         return
       }
+      // Outros erros (link inválido, live encerrada, etc.) ainda podem ter
+      // uma nova tentativa automática agendada pelo BullMQ — só marca FAILED
+      // de vez quando essa já foi a última tentativa.
+      const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 1)
+      if (!isFinalAttempt) return
       await prisma.sourceVideo
         .update({
           where: { id: job.data.sourceVideoId },
