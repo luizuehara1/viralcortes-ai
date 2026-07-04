@@ -180,6 +180,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const nextState = mergeEditorState(clip.editorState, parsed.data as Partial<EditorState>)
 
+  if (parsed.data.layoutMode !== undefined) {
+    console.log('[clips/editor] Layout de facecam salvo', {
+      clipId: params.id,
+      layoutMode: parsed.data.layoutMode,
+      facecamConfirmed: parsed.data.layoutConfig?.facecamConfirmed ?? null,
+    })
+  }
+
   await prisma.suggestedClip.update({
     where: { id: params.id },
     data: { editorState: nextState as any },

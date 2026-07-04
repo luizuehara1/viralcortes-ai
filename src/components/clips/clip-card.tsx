@@ -8,8 +8,9 @@ import {
 } from 'lucide-react'
 import { EMOTION_LABELS, EMOTION_COLORS, CLIP_FORMAT_LABELS } from '@/types'
 import { formatTimeCode, formatDuration, viralScoreColor, viralScoreBg } from '@/lib/utils'
-import type { ClipEmotion, ClipStatus, ClipFormat, FitMode } from '@/types'
-import { FormatPickerModal } from './format-picker-modal'
+import type { ClipEmotion, ClipStatus, ClipFormat, FitMode, SplitLayoutMode } from '@/types'
+import { resolveFacecamLayout, saveClipLayout } from '@/lib/facecam-client'
+import { FormatPickerModal, type ConfirmOutcome } from './format-picker-modal'
 import { ExportModal } from './export-modal'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
@@ -69,10 +70,28 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
     setRenderedClips(clip.renderedClips)
   }, [clip.renderedClips])
 
-  const requestRender = async (format: ClipFormat = 'ORIGINAL', fitMode: FitMode = 'CONTAIN') => {
+  const requestRender = async (
+    format: ClipFormat = 'ORIGINAL',
+    fitMode: FitMode = 'CONTAIN',
+    layoutMode?: SplitLayoutMode | null
+  ): Promise<ConfirmOutcome> => {
     setRendering(true)
     setError('')
     try {
+      // Layout com facecam escolhido — precisa de uma facecamRegion válida
+      // antes de enfileirar. Tenta detectar de verdade; se não conseguir,
+      // NÃO segue com um palpite calado (o usuário não saberia que a
+      // posição é só um chute) — devolve pro modal mostrar o aviso e o
+      // atalho "Ver/Ajustar Cam" em vez de gerar um corte com facecam torta.
+      if (layoutMode) {
+        const { confirmed, layoutConfig } = await resolveFacecamLayout(clip.id, layoutMode)
+        if (!confirmed) {
+          setRendering(false)
+          return { ok: false, reason: 'FACECAM_UNCONFIRMED', editorHref: `/clips/${clip.id}/editor` }
+        }
+        await saveClipLayout(clip.id, layoutMode, layoutConfig)
+      }
+
       const res = await fetch(`/api/clips/${clip.id}/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,13 +101,15 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
       if (res.ok) {
         setStatus('RENDERING')
         setPickerOpen(false)
-      } else {
-        setError(body?.error || 'Falha ao iniciar a renderização')
+        setRendering(false)
+        return { ok: true }
       }
+      setError(body?.error || 'Não foi possível colocar este corte na fila de renderização. Verifique Redis/worker.')
     } catch {
       setError('Falha na conexão')
     }
     setRendering(false)
+    return { ok: false, reason: 'ERROR' }
   }
 
   // Single source of truth for polling: fires whenever `status` becomes
@@ -294,8 +315,9 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
       {pickerOpen && (
         <FormatPickerModal
           submitting={rendering}
+          error={error}
           onClose={() => setPickerOpen(false)}
-          onConfirm={(format, fitMode) => requestRender(format, fitMode)}
+          onConfirm={requestRender}
         />
       )}
 

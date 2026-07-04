@@ -4,9 +4,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Zap, CheckSquare } from 'lucide-react'
 import { ClipCard } from './clip-card'
-import { FormatPickerModal } from './format-picker-modal'
+import { FormatPickerModal, type ConfirmOutcome } from './format-picker-modal'
 import type { ClipFormat, FitMode, SplitLayoutMode } from '@/types'
-import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
+import { resolveFacecamLayout, saveClipLayout } from '@/lib/facecam-client'
 
 interface Props {
   clips: any[]
@@ -38,42 +38,24 @@ export function ClipsGrid({ clips }: Props) {
   // Renders every selected clip in the same chosen format/fitMode — enqueues
   // one job per clip (the worker's own RENDER_CONCURRENCY caps how many run
   // in parallel, this just fires the requests).
-  const renderSelected = async (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null) => {
+  const renderSelected = async (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null): Promise<ConfirmOutcome> => {
     setSubmitting(true)
     setError('')
     let failed = 0
+    let unconfirmedFacecam = 0
     for (const id of Array.from(selected)) {
       try {
         // Layout com facecam escolhido no modal — tenta detectar a facecam
         // de verdade antes de renderizar (em vez de sempre cair no palpite
         // padrão calado); se a detecção falhar, usa o padrão mas marca
         // facecamConfirmed:false pra aba "Layout" avisar que precisa ajuste.
+        // Geração em lote não bloqueia por clip (o usuário pode ter dezenas
+        // selecionados) — o aviso agregado abaixo já sinaliza quantos
+        // precisam de ajuste manual depois.
         if (layoutMode) {
-          let facecamRegion = DEFAULT_SPLIT_LAYOUT_CONFIG.facecamRegion
-          let facecamConfirmed = false
-          try {
-            const detectRes = await fetch(`/api/clips/${id}/detect-facecam`, { method: 'POST' })
-            const detectBody = await detectRes.json().catch(() => null)
-            if (detectRes.ok && detectBody?.detected && detectBody.region) {
-              facecamRegion = detectBody.region
-              facecamConfirmed = true
-            }
-          } catch {
-            // segue com o padrão — falha de detecção não deve travar a geração
-          }
-          await fetch(`/api/clips/${id}/editor`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              layoutMode,
-              layoutConfig: {
-                ...DEFAULT_SPLIT_LAYOUT_CONFIG,
-                facecamRegion,
-                facecamConfirmed,
-                splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode],
-              },
-            }),
-          }).catch(() => {})
+          const { confirmed, layoutConfig } = await resolveFacecamLayout(id, layoutMode)
+          if (!confirmed) unconfirmedFacecam++
+          await saveClipLayout(id, layoutMode, layoutConfig)
         }
         const res = await fetch(`/api/clips/${id}/render`, {
           method: 'POST',
@@ -88,8 +70,13 @@ export function ClipsGrid({ clips }: Props) {
     setSubmitting(false)
     setPickerOpen(false)
     setSelected(new Set())
-    if (failed > 0) setError(`${failed} de ${selected.size} corte(s) não puderam ser enfileirados`)
     router.refresh()
+    if (failed > 0) {
+      setError(`${failed} de ${selected.size} corte(s) não puderam ser enfileirados`)
+    } else if (unconfirmedFacecam > 0) {
+      setError(`${unconfirmedFacecam} corte(s) usaram uma posição padrão de facecam — ajuste manualmente no editor (aba "Layout") de cada um.`)
+    }
+    return { ok: true }
   }
 
   return (

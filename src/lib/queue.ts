@@ -49,11 +49,16 @@ export async function enqueueVideoImport(sourceVideoId: string) {
 }
 
 export async function enqueueClipRendering(clipId: string, format: string = 'ORIGINAL', fitMode: string = 'CONTAIN') {
-  return clipQueue.add(
-    'render-clip',
-    { clipId, format, fitMode },
-    { jobId: `clip-${clipId}-${format}-${fitMode}` }
-  )
+  // jobId precisa ser único POR TENTATIVA, não só por clip+formato: o BullMQ
+  // trata add() com um jobId que já existe (mesmo já COMPLETO ou FALHO,
+  // enquanto o registro não for varrido pelo removeOnComplete/removeOnFail)
+  // como um no-op silencioso — não lança erro, só devolve o job antigo sem
+  // enfileirar nada novo. Isso fazia "Tentar novamente" (mesmo formato de um
+  // corte que já falhou antes) marcar o clip como RENDERING no banco sem
+  // nenhum job real rodar. A proteção contra clique duplicado já existe do
+  // jeito certo em route.ts (bloqueia se clip.status === 'RENDERING').
+  const jobId = `clip-${clipId}-${format}-${fitMode}-${Date.now()}`
+  return clipQueue.add('render-clip', { clipId, format, fitMode }, { jobId })
 }
 
 export const socialPublishQueue = new Queue('social-publish', {

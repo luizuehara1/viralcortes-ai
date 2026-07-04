@@ -25,6 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       id: params.id,
       sourceVideo: { project: { userId } },
     },
+    include: { sourceVideo: { select: { projectId: true } } },
   })
 
   if (!clip) return NextResponse.json({ error: 'Clip não encontrado' }, { status: 404 })
@@ -32,8 +33,42 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Clip já está sendo renderizado' }, { status: 409 })
   }
 
-  await enqueueClipRendering(params.id, format, fitMode)
-  await prisma.suggestedClip.update({ where: { id: params.id }, data: { status: 'RENDERING' } })
+  const queueName = 'clip-rendering'
+  console.log('[clips/render] Enfileirando corte', {
+    clipId: params.id,
+    projectId: clip.sourceVideo.projectId,
+    format,
+    fitMode,
+    queueName,
+  })
 
-  return NextResponse.json({ clipId: params.id, status: 'RENDERING', format, fitMode })
+  let job
+  try {
+    job = await enqueueClipRendering(params.id, format, fitMode)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[clips/render] Falha ao enfileirar na fila BullMQ', { clipId: params.id, queueName, error: message })
+    await prisma.suggestedClip
+      .update({
+        where: { id: params.id },
+        data: {
+          status: 'FAILED',
+          errorMessage: 'Não foi possível colocar este corte na fila de renderização. Verifique Redis/worker.',
+        },
+      })
+      .catch((updateErr) => console.error('[clips/render] Falha ao salvar status FAILED', updateErr))
+    return NextResponse.json(
+      { error: 'Não foi possível colocar este corte na fila de renderização. Verifique Redis/worker.' },
+      { status: 502 }
+    )
+  }
+
+  console.log('[clips/render] Corte enfileirado', { clipId: params.id, jobId: job.id, queueName, status: 'RENDERING' })
+
+  await prisma.suggestedClip.update({
+    where: { id: params.id },
+    data: { status: 'RENDERING', jobId: job.id ?? null, errorMessage: null },
+  })
+
+  return NextResponse.json({ clipId: params.id, status: 'RENDERING', format, fitMode, jobId: job.id })
 }

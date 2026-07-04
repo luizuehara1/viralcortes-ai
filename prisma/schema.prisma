@@ -209,6 +209,10 @@ model SuggestedClip {
   hashtags      String[]
   status        ClipStatus  @default(SUGGESTED)
   errorMessage  String?
+  // ID do job BullMQ mais recente enfileirado pra este corte (fila
+  // "clip-rendering") — só pra depurar por que um render não avançou, não é
+  // usado pra nenhuma lógica de negócio.
+  jobId         String?
   // Estado do editor no navegador (overlays de texto, legendas palavra-a-
   // palavra, efeitos, cor de destaque etc). Um único blob JSON — não precisa
   // de tabelas relacionais porque é sempre lido/escrito inteiro pelo editor.
