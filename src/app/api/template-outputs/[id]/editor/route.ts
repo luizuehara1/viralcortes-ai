@@ -27,6 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 
   const editorState = mergeEditorState(output.editorState, {})
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return NextResponse.json({
     templateOutput: {
@@ -36,6 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       mediaType: output.mediaType,
     },
     editorState,
+    lastSplitLayoutConfig: user?.lastSplitLayoutConfig ?? null,
   })
 }
 
@@ -84,11 +86,26 @@ const effectSchema = z.object({
   params: z.record(z.number()),
 })
 
+const splitLayoutRegionSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0).max(1),
+  height: z.number().min(0).max(1),
+})
+
+const splitLayoutConfigSchema = z.object({
+  facecamRegion: splitLayoutRegionSchema,
+  facecamZoom: z.number().min(1).max(4),
+  splitRatio: z.number().min(0.2).max(0.8),
+})
+
 const patchSchema = z.object({
   textOverlays: z.array(textOverlaySchema).optional(),
   captions: z.array(captionSegmentSchema).optional(),
   captionStyle: captionStyleSchema.optional(),
   effects: z.array(effectSchema).optional(),
+  layoutMode: z.enum(['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']).nullable().optional(),
+  layoutConfig: splitLayoutConfigSchema.optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -111,6 +128,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id },
     data: { editorState: nextState as any },
   })
+
+  if (parsed.data.layoutConfig) {
+    await prisma.user
+      .update({ where: { id: userId }, data: { lastSplitLayoutConfig: parsed.data.layoutConfig as any } })
+      .catch(console.error)
+  }
 
   return NextResponse.json({ editorState: nextState })
 }

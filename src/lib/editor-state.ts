@@ -11,5 +11,10 @@ export function mergeEditorState(existing: unknown, updates: Partial<EditorState
     captionStyle: updates.captionStyle ?? base.captionStyle ?? DEFAULT_CAPTION_STYLE,
     effects: updates.effects ?? base.effects ?? [],
     captionsGeneratedAt: updates.captionsGeneratedAt ?? base.captionsGeneratedAt,
+    // layoutMode pode ser explicitamente `null` (desligar o split) — "??"
+    // trataria null como ausente e cairia pro valor antigo, por isso checa
+    // presença da chave em vez de usar nullish coalescing aqui.
+    layoutMode: 'layoutMode' in updates ? updates.layoutMode : base.layoutMode,
+    layoutConfig: updates.layoutConfig ?? base.layoutConfig,
   }
 }

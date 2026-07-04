@@ -19,6 +19,10 @@ model User {
   // uploads/templates/{id}/) — carregado automaticamente na próxima vez em
   // vez de exigir reenvio, com opção de trocar manualmente.
   lastTemplateId String?
+  // Último ajuste de layout split-screen (facecam) feito pelo usuário —
+  // ver SplitLayoutConfig em src/types — pré-preenche o painel "Layout" a
+  // partir do 2º corte em diante, em vez de sempre partir do zero.
+  lastSplitLayoutConfig Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

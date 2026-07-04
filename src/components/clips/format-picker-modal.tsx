@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { X, Loader2, Wand2, ShieldCheck } from 'lucide-react'
-import type { ClipFormat, FitMode } from '@/types'
-import { CLIP_FORMAT_LABELS, FIT_MODE_LABELS } from '@/types'
+import type { ClipFormat, FitMode, SplitLayoutMode } from '@/types'
+import { CLIP_FORMAT_LABELS, FIT_MODE_LABELS, SPLIT_LAYOUT_LABELS } from '@/types'
 
 interface Props {
   onClose: () => void
-  onConfirm: (format: ClipFormat, fitMode: FitMode) => void
+  onConfirm: (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null) => void
   submitting: boolean
 }
 
@@ -22,10 +22,15 @@ const FORMAT_ASPECT: Record<ClipFormat, string> = {
   FEED_4_5: '4 / 5',
 }
 const FIT_MODES: FitMode[] = ['CONTAIN', 'COVER', 'BLUR_BACKGROUND']
+const SPLIT_LAYOUT_MODES: SplitLayoutMode[] = ['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']
 
 export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
   const [format, setFormat] = useState<ClipFormat>('ORIGINAL')
   const [fitMode, setFitMode] = useState<FitMode>('CONTAIN')
+  // Layout com facecam é uma alternativa ao fitMode normal, só faz sentido
+  // pra formato vertical — posição padrão de facecam (sem detecção
+  // automática ainda, isso fica pro editor) é aplicada na hora do render.
+  const [layoutMode, setLayoutMode] = useState<SplitLayoutMode | null>(null)
 
   return (
     <div
@@ -90,13 +95,45 @@ export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
           </div>
         )}
 
+        {format === 'VERTICAL_9_16' && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/70">Layout com facecam (opcional)</label>
+            <div className="space-y-1.5">
+              <button
+                onClick={() => setLayoutMode(null)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-colors ${
+                  !layoutMode ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 bg-white/3 text-white/60 hover:bg-white/6'
+                }`}
+              >
+                Nenhum
+              </button>
+              {SPLIT_LAYOUT_MODES.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setLayoutMode(m)}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-colors ${
+                    layoutMode === m ? 'border-violet-500 bg-violet-500/15 text-white' : 'border-white/10 bg-white/3 text-white/60 hover:bg-white/6'
+                  }`}
+                >
+                  {SPLIT_LAYOUT_LABELS[m]}
+                </button>
+              ))}
+            </div>
+            {layoutMode && (
+              <p className="text-xs text-white/30">
+                Usa uma posição padrão pra facecam — ajuste depois no editor (aba &quot;Layout&quot;).
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-white/3 text-xs text-white/40">
           <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-green-400/70" />
           <span>Áudio original mantido · 30 FPS constante · sem legendas ou textos automáticos</span>
         </div>
 
         <button
-          onClick={() => onConfirm(format, fitMode)}
+          onClick={() => onConfirm(format, fitMode, layoutMode)}
           disabled={submitting}
           className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 font-semibold transition-all flex items-center justify-center gap-2"
         >

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { ClipEditor } from '@/components/editor/clip-editor'
 import { MediaMissingNotice } from '@/components/editor/media-missing-notice'
-import { DEFAULT_EDITOR_STATE, type EditorState } from '@/types'
+import { DEFAULT_EDITOR_STATE, type EditorState, type SplitLayoutConfig } from '@/types'
 
 interface Props {
   params: { id: string }
@@ -32,6 +32,7 @@ export default async function ClipEditorPage({ params }: Props) {
   }
 
   const editorState = (clip.editorState as EditorState | null) || DEFAULT_EDITOR_STATE
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return (
     <div className="max-w-6xl mx-auto animate-in">
@@ -45,6 +46,7 @@ export default async function ClipEditorPage({ params }: Props) {
         sourceVideoId={clip.sourceVideo.id}
         projectId={clip.sourceVideo.projectId}
         initialEditorState={editorState}
+        lastSplitLayoutConfig={(user?.lastSplitLayoutConfig as SplitLayoutConfig | null) ?? null}
       />
     </div>
   )

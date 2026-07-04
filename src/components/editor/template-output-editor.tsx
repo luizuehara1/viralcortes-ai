@@ -2,21 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, Loader2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, Loader2, LayoutTemplate } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
+import { LayoutPanel } from './layout-panel'
 import { ScheduleModal } from '@/components/social/schedule-modal'
-import type { EditorState } from '@/types'
+import type { EditorState, SplitLayoutConfig } from '@/types'
 
 interface Props {
   output: { id: string; duration: number; caption: string | null }
   initialEditorState: EditorState
+  lastSplitLayoutConfig: SplitLayoutConfig | null
 }
 
-type Tab = 'captions' | 'text' | 'effects'
+type Tab = 'captions' | 'text' | 'effects' | 'layout'
 
 // Editor do resultado do Template Studio — mesma UI/lógica do ClipEditor
 // (src/components/editor/clip-editor.tsx), mas sem sourceVideoId/projectId/
@@ -24,7 +26,7 @@ type Tab = 'captions' | 'text' | 'effects'
 // Diferente de um clipe, não há múltiplos formatos pra escolher ao "renderizar"
 // — o botão só queima as edições de volta no próprio arquivo
 // (POST /api/template-outputs/[id]/render).
-export function TemplateOutputEditor({ output, initialEditorState }: Props) {
+export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayoutConfig }: Props) {
   const duration = output.duration
 
   const [editorState, setEditorState] = useState<EditorState>(initialEditorState)
@@ -170,6 +172,16 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
                 textOverlays: s.textOverlays.map((o) => (o.id === id ? { ...o, x, y } : o)),
               }))
             }
+            splitLayout={
+              editorState.layoutMode && editorState.layoutConfig
+                ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
+                : undefined
+            }
+            onSplitLayoutRegionMove={(x, y) =>
+              setEditorState((s) =>
+                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y } } } : s
+              )
+            }
           />
           <div className="glass rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-white/40">
@@ -192,6 +204,7 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
             <TabButton active={tab === 'captions'} onClick={() => setTab('captions')} icon={<Captions className="w-3.5 h-3.5" />} label="Legendas" />
             <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
             <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
+            <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
           </div>
 
           {tab === 'captions' && (
@@ -226,6 +239,15 @@ export function TemplateOutputEditor({ output, initialEditorState }: Props) {
               duration={duration}
               currentTime={currentTime}
               onChange={(effects) => setEditorState((s) => ({ ...s, effects }))}
+            />
+          )}
+          {tab === 'layout' && (
+            <LayoutPanel
+              layoutMode={editorState.layoutMode}
+              layoutConfig={editorState.layoutConfig}
+              lastUsedConfig={lastSplitLayoutConfig}
+              detectEndpoint={`/api/template-outputs/${output.id}/detect-facecam`}
+              onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}
         </div>

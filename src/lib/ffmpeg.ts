@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
-import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId } from '@/types'
+import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId, SplitLayoutMode, SplitLayoutConfig } from '@/types'
 
 if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
 if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH)
@@ -259,6 +259,10 @@ export interface RenderClipOptions {
   editorCaptions?: CaptionSegment[]
   editorCaptionStyle?: CaptionStyle
   editorEffects?: Effect[]
+  // Presente = layout split-screen (facecam), sobrepõe/ignora fitMode —
+  // ver buildSplitLayoutFilters. Ausente = comportamento normal de sempre.
+  layoutMode?: SplitLayoutMode
+  layoutConfig?: SplitLayoutConfig
   onProgress?: (progress: number) => void
 }
 
@@ -267,6 +271,65 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
   SQUARE_1_1:     { width: 1080, height: 1080 },
   HORIZONTAL_16_9:{ width: 1920, height: 1080 },
   FEED_4_5:       { width: 1080, height: 1350 },
+}
+
+// Empilha duas regiões do MESMO vídeo fonte uma em cima da outra (layout
+// split-screen com facecam) — canvasW/canvasH é o tamanho final de saída,
+// srcW/srcH é o tamanho do vídeo fonte (facecamRegion é relativo a ele).
+// Usa vstack em vez de overlay (like BLUR_BACKGROUND) porque é só empilhar
+// verticalmente, sem posicionamento x/y entre os dois painéis.
+function buildSplitLayoutFilters(
+  mode: SplitLayoutMode,
+  config: SplitLayoutConfig,
+  canvasW: number,
+  canvasH: number,
+  srcW: number,
+  srcH: number
+): ffmpeg.FilterSpecification[] {
+  const OUTPUT_FPS = 30
+  // Par por construção: floor(par/2)*2 já é par, e a subtração de dois
+  // pares sempre dá par — garante que os dois painéis somam exatamente
+  // canvasH (vstack exige que a soma das alturas bata com o esperado).
+  const topHeight = Math.max(2, Math.floor((canvasH * config.splitRatio) / 2) * 2)
+  const bottomHeight = canvasH - topHeight
+
+  // Zoom embutido num único crop (não dois) — corta um sub-retângulo menor
+  // e centralizado dentro da região da facecam, depois escala pra encher o
+  // painel. zoom <1 não faz sentido (nunca cropar além da região original).
+  const zoom = Math.max(1, config.facecamZoom)
+  const fcX = Math.round(config.facecamRegion.x * srcW)
+  const fcY = Math.round(config.facecamRegion.y * srcH)
+  const fcW = Math.max(2, Math.round(config.facecamRegion.width * srcW))
+  const fcH = Math.max(2, Math.round(config.facecamRegion.height * srcH))
+  const cropW = Math.max(2, Math.round(fcW / zoom))
+  const cropH = Math.max(2, Math.round(fcH / zoom))
+  const cropX = Math.min(srcW - cropW, Math.max(0, Math.round(fcX + (fcW - cropW) / 2)))
+  const cropY = Math.min(srcH - cropH, Math.max(0, Math.round(fcY + (fcH - cropH) / 2)))
+
+  const isFacecamTop = mode === 'FACECAM_TOP_MAIN_BOTTOM'
+  const mainPanelHeight = isFacecamTop ? bottomHeight : topHeight
+  const facecamPanelHeight = isFacecamTop ? topHeight : bottomHeight
+
+  const filters: ffmpeg.FilterSpecification[] = [
+    { filter: 'fps', options: `fps=${OUTPUT_FPS}`, inputs: '0:v', outputs: 'v30' },
+    // Painel "principal": cover-crop do frame inteiro pra preencher W x altura do painel.
+    { filter: 'scale', options: `${canvasW}:${mainPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'v30', outputs: 'mainScaled' },
+    { filter: 'crop', options: `${canvasW}:${mainPanelHeight}`, inputs: 'mainScaled', outputs: 'mainPanel' },
+    // Painel "facecam": crop já com zoom embutido, depois cover-crop pra preencher W x altura do painel.
+    { filter: 'crop', options: `${cropW}:${cropH}:${cropX}:${cropY}`, inputs: 'v30', outputs: 'fcCropped' },
+    { filter: 'scale', options: `${canvasW}:${facecamPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'fcCropped', outputs: 'fcScaled' },
+    { filter: 'crop', options: `${canvasW}:${facecamPanelHeight}`, inputs: 'fcScaled', outputs: 'facecamPanel' },
+  ]
+
+  filters.push({
+    filter: 'vstack',
+    options: 'inputs=2',
+    inputs: isFacecamTop ? ['facecamPanel', 'mainPanel'] : ['mainPanel', 'facecamPanel'],
+    outputs: 'stacked',
+  })
+  filters.push({ filter: 'format', options: 'yuv420p', inputs: 'stacked', outputs: 'outv' })
+
+  return filters
 }
 
 // drawtext resolves fonts through Fontconfig by default, which isn't
@@ -367,7 +430,15 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   let complexFilters: ffmpeg.FilterSpecification[] | null = null
   let finalVideoLabel = 'outv'
 
-  if (isOriginal) {
+  // Layout split-screen (facecam) sobrepõe completamente o branch normal de
+  // format/fitMode abaixo — a construção de verdade acontece logo depois de
+  // getFrameSize() ser definida (algumas linhas abaixo), porque precisa
+  // conhecer as dimensões do canvas de saída antes de montar o filtro.
+  const hasSplitLayout = !!(opts.layoutMode && opts.layoutConfig)
+
+  if (hasSplitLayout) {
+    // placeholder — sobrescrito abaixo, depois que getFrameSize existir.
+  } else if (isOriginal) {
     // Keeps the source aspect ratio untouched — no crop, no scale to a fixed
     // canvas, no zoom. Only forces even width/height because H.264
     // (yuv420p) requires both dimensions to be divisible by 2.
@@ -421,6 +492,21 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
       cachedFrameSize = FORMAT_DIMENSIONS[format]
     }
     return cachedFrameSize
+  }
+
+  if (hasSplitLayout) {
+    const { width: canvasW, height: canvasH } = await getFrameSize()
+    const srcMeta = await getVideoMetadata(inputPath)
+    complexFilters = buildSplitLayoutFilters(
+      opts.layoutMode!,
+      opts.layoutConfig!,
+      canvasW,
+      canvasH,
+      srcMeta.width || canvasW,
+      srcMeta.height || canvasH
+    )
+    vfFilters = []
+    finalVideoLabel = 'outv'
   }
 
   // 'clean' is the default: no drawtext, no burned-in title/caption, no box.

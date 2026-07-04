@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { TemplateOutputEditor } from '@/components/editor/template-output-editor'
 import { MediaMissingNotice } from '@/components/editor/media-missing-notice'
-import { DEFAULT_EDITOR_STATE, type EditorState } from '@/types'
+import { DEFAULT_EDITOR_STATE, type EditorState, type SplitLayoutConfig } from '@/types'
 
 interface Props {
   params: { id: string }
@@ -31,12 +31,14 @@ export default async function TemplateOutputEditorPage({ params }: Props) {
   }
 
   const editorState = (output.editorState as EditorState | null) || DEFAULT_EDITOR_STATE
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return (
     <div className="max-w-6xl mx-auto animate-in">
       <TemplateOutputEditor
         output={{ id: output.id, duration: output.duration, caption: output.caption }}
         initialEditorState={editorState}
+        lastSplitLayoutConfig={(user?.lastSplitLayoutConfig as SplitLayoutConfig | null) ?? null}
       />
     </div>
   )

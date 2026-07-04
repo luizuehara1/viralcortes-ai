@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Zap, CheckSquare } from 'lucide-react'
 import { ClipCard } from './clip-card'
 import { FormatPickerModal } from './format-picker-modal'
-import type { ClipFormat, FitMode } from '@/types'
+import type { ClipFormat, FitMode, SplitLayoutMode } from '@/types'
+import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
 
 interface Props {
   clips: any[]
@@ -37,12 +38,25 @@ export function ClipsGrid({ clips }: Props) {
   // Renders every selected clip in the same chosen format/fitMode — enqueues
   // one job per clip (the worker's own RENDER_CONCURRENCY caps how many run
   // in parallel, this just fires the requests).
-  const renderSelected = async (format: ClipFormat, fitMode: FitMode) => {
+  const renderSelected = async (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null) => {
     setSubmitting(true)
     setError('')
     let failed = 0
     for (const id of Array.from(selected)) {
       try {
+        // Layout com facecam escolhido no modal — grava uma posição padrão
+        // antes de renderizar (o usuário ajusta depois no editor, aba
+        // "Layout", se quiser refinar).
+        if (layoutMode) {
+          await fetch(`/api/clips/${id}/editor`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              layoutMode,
+              layoutConfig: { ...DEFAULT_SPLIT_LAYOUT_CONFIG, splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode] },
+            }),
+          }).catch(() => {})
+        }
         const res = await fetch(`/api/clips/${id}/render`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -48,6 +48,10 @@ async function processClipRender(job: Job) {
     editorCaptions: editorState?.captions,
     editorCaptionStyle: editorState?.captionStyle,
     editorEffects: editorState?.effects,
+    // Presente = layout split-screen (facecam) — sobrepõe fitMode dentro de
+    // renderClip, ver src/lib/ffmpeg.ts.
+    layoutMode: editorState?.layoutMode ?? undefined,
+    layoutConfig: editorState?.layoutConfig,
     onProgress: async (progress) => {
       await job.updateProgress(progress)
     },

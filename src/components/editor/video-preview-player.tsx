@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { FONT_OPTIONS, DEFAULT_FONT_FAMILY, type TextOverlay, type CaptionSegment, type CaptionStyle, type FontFamilyId } from '@/types'
+import {
+  FONT_OPTIONS, DEFAULT_FONT_FAMILY,
+  type TextOverlay, type CaptionSegment, type CaptionStyle, type FontFamilyId,
+  type SplitLayoutRegion, type SplitLayoutMode,
+} from '@/types'
 
 interface SeekRequest {
   time: number // segundos, relativo ao início do clipe
@@ -27,6 +31,12 @@ interface Props {
   // painel) — omitido = overlays não ficam arrastáveis (ex.: se um dia essa
   // preview for usada só pra visualização).
   onOverlayMove?: (id: string, x: number, y: number) => void
+  // Layout split-screen (facecam) — desenha o retângulo da facecam
+  // (arrastável) e uma linha pontilhada mostrando onde a divisão acontece.
+  // É uma aproximação visual (o vídeo aqui é o fonte cru, sem o corte/zoom
+  // final) — o resultado exato só aparece depois de renderizar.
+  splitLayout?: { region: SplitLayoutRegion; splitRatio: number; mode: SplitLayoutMode }
+  onSplitLayoutRegionMove?: (x: number, y: number) => void
 }
 
 const FONT_CSS_FAMILY: Record<FontFamilyId, string> = Object.fromEntries(
@@ -62,12 +72,19 @@ export function VideoPreviewPlayer({
   captions,
   captionStyle,
   onOverlayMove,
+  splitLayout,
+  onSplitLayoutRegionMove,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const [scale, setScale] = useState(1)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  // Offset entre o ponto onde o usuário clicou e o canto superior-esquerdo
+  // do retângulo, em fração 0-1 — sem isso, o retângulo "pularia" pro
+  // cursor no instante do clique em vez de simplesmente se mover junto.
+  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null)
+  const [draggingRegion, setDraggingRegion] = useState(false)
 
   useEffect(() => {
     const el = containerRef.current
@@ -139,6 +156,48 @@ export function VideoPreviewPlayer({
     }
   }, [draggingId, onOverlayMove])
 
+  // Arrastar o retângulo da facecam — mantém largura/altura fixas (só o
+  // painel de campos numéricos redimensiona), igual decidido: arrastar move,
+  // campos ajustam tamanho.
+  useEffect(() => {
+    if (!draggingRegion || !onSplitLayoutRegionMove || !dragOffset || !splitLayout) return
+
+    const handleMove = (clientX: number, clientY: number) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const { width, height } = splitLayout.region
+      const x = Math.min(1 - width, Math.max(0, (clientX - rect.left) / rect.width - dragOffset.dx))
+      const y = Math.min(1 - height, Math.max(0, (clientY - rect.top) / rect.height - dragOffset.dy))
+      onSplitLayoutRegionMove(x, y)
+    }
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      if (touch) handleMove(touch.clientX, touch.clientY)
+    }
+    const stopDragging = () => { setDraggingRegion(false); setDragOffset(null) }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', stopDragging)
+    window.addEventListener('touchmove', onTouchMove)
+    window.addEventListener('touchend', stopDragging)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', stopDragging)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', stopDragging)
+    }
+  }, [draggingRegion, dragOffset, onSplitLayoutRegionMove, splitLayout])
+
+  const startDraggingRegion = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect || !splitLayout) return
+    const px = (clientX - rect.left) / rect.width
+    const py = (clientY - rect.top) / rect.height
+    setDragOffset({ dx: px - splitLayout.region.x, dy: py - splitLayout.region.y })
+    setDraggingRegion(true)
+  }
+
   const handleTimeUpdate = () => {
     const video = videoRef.current
     if (!video) return
@@ -191,6 +250,32 @@ export function VideoPreviewPlayer({
           {overlay.text}
         </div>
       ))}
+
+      {splitLayout && (
+        <>
+          {/* Linha pontilhada mostrando onde a divisão entre os dois painéis
+              acontece — só uma referência aproximada (o vídeo aqui é o fonte
+              cru, o corte/zoom final só aparece depois de renderizar). */}
+          <div
+            className="absolute left-0 right-0 border-t-2 border-dashed border-white/50 pointer-events-none"
+            style={{ top: `${splitLayout.splitRatio * 100}%` }}
+          />
+          <div
+            onMouseDown={onSplitLayoutRegionMove ? (e) => { e.preventDefault(); startDraggingRegion(e.clientX, e.clientY) } : undefined}
+            onTouchStart={onSplitLayoutRegionMove ? (e) => { const t = e.touches[0]; if (t) startDraggingRegion(t.clientX, t.clientY) } : undefined}
+            className={`absolute border-2 border-violet-400 bg-violet-500/20 ${onSplitLayoutRegionMove ? 'cursor-move' : 'pointer-events-none'} ${draggingRegion ? 'outline outline-2 outline-violet-300' : ''}`}
+            style={{
+              left: `${splitLayout.region.x * 100}%`,
+              top: `${splitLayout.region.y * 100}%`,
+              width: `${splitLayout.region.width * 100}%`,
+              height: `${splitLayout.region.height * 100}%`,
+              zIndex: 10,
+            }}
+          >
+            <span className="absolute -top-5 left-0 text-[10px] text-violet-300 whitespace-nowrap">Facecam</span>
+          </div>
+        </>
+      )}
 
       {activeWord && (
         <div

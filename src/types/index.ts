@@ -174,6 +174,48 @@ export interface Effect {
   params: ColorFilterParams | ZoomPanParams
 }
 
+// Layouts "split-screen" pra cortes verticais com facecam — empilha duas
+// regiões do MESMO vídeo fonte (não dois vídeos diferentes, como o Template
+// Studio) uma em cima da outra. Vive no EditorState (não como novo FitMode)
+// porque precisa funcionar tanto no corte normal quanto no resultado de
+// template (que usa format:'ORIGINAL' e nem passa fitMode pro renderClip).
+export type SplitLayoutMode = 'MAIN_TOP_FACECAM_BOTTOM' | 'FACECAM_TOP_MAIN_BOTTOM'
+
+// 0-1 normalizado, relativo às dimensões do vídeo FONTE (não do canvas de
+// saída) — mesma convenção da detecção de facecam existente.
+export interface SplitLayoutRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface SplitLayoutConfig {
+  facecamRegion: SplitLayoutRegion
+  facecamZoom: number // 1.0 = sem zoom extra
+  splitRatio: number // fração 0-1 da altura ocupada pelo painel de CIMA
+}
+
+export const SPLIT_LAYOUT_LABELS: Record<SplitLayoutMode, string> = {
+  MAIN_TOP_FACECAM_BOTTOM: 'Principal em cima + Facecam com zoom embaixo',
+  FACECAM_TOP_MAIN_BOTTOM: 'Facecam em cima + Principal embaixo',
+}
+
+// Canto inferior direito, ~28% do quadro — mesma convenção de "canto comum
+// de webcam" já usada como fallback no crop manual de facecam do Template
+// Studio. splitRatio default varia por modo (50% principal-topo, 45%
+// facecam-topo) — aplicado onde o modo é escolhido, não aqui.
+export const DEFAULT_SPLIT_LAYOUT_CONFIG: SplitLayoutConfig = {
+  facecamRegion: { x: 0.7, y: 0.65, width: 0.28, height: 0.28 },
+  facecamZoom: 1.3,
+  splitRatio: 0.5,
+}
+
+export const DEFAULT_SPLIT_RATIO_BY_MODE: Record<SplitLayoutMode, number> = {
+  MAIN_TOP_FACECAM_BOTTOM: 0.5,
+  FACECAM_TOP_MAIN_BOTTOM: 0.45,
+}
+
 export interface EditorState {
   textOverlays: TextOverlay[]
   captions: CaptionSegment[]
@@ -182,6 +224,10 @@ export interface EditorState {
   // Marca se o usuário já pediu geração de legendas ao menos uma vez —
   // evita chamadas repetidas de Whisper sem necessidade na UI.
   captionsGeneratedAt?: string
+  // null explícito = "layout normal, sem split" (permite desligar depois de
+  // já ter ligado uma vez, diferente de undefined = "nunca configurado").
+  layoutMode?: SplitLayoutMode | null
+  layoutConfig?: SplitLayoutConfig
 }
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {

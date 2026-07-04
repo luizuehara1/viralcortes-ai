@@ -3,29 +3,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, LayoutTemplate } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
+import { LayoutPanel } from './layout-panel'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
-import type { EditorState, ClipFormat, FitMode } from '@/types'
+import type { EditorState, ClipFormat, FitMode, SplitLayoutMode, SplitLayoutConfig } from '@/types'
+import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
 
 interface Props {
   clip: { id: string; title: string; startTime: number; endTime: number }
   sourceVideoId: string
   projectId: string
   initialEditorState: EditorState
+  lastSplitLayoutConfig: SplitLayoutConfig | null
 }
 
-type Tab = 'captions' | 'text' | 'effects'
+type Tab = 'captions' | 'text' | 'effects' | 'layout'
 
 // Orquestra o editor inteiro: preview + autosave do editorState + disparo do
 // render (que já pega os overlays/legendas/efeitos automaticamente no
 // worker, ver src/workers/clip-renderer.ts). Não re-corta o clipe — o
 // intervalo [startTime, endTime] já foi decidido na sugestão de IA.
-export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState }: Props) {
+export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState, lastSplitLayoutConfig }: Props) {
   const router = useRouter()
   const duration = clip.endTime - clip.startTime
 
@@ -73,9 +76,21 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
     setSeekRequest({ time, token: seekTokenRef.current })
   }, [])
 
-  const requestRender = async (format: ClipFormat, fitMode: FitMode) => {
+  const requestRender = async (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null) => {
     setRendering(true)
     try {
+      // Layout escolhido no modal (na hora de gerar, antes de já ter mexido
+      // na aba "Layout") — só grava um padrão se o clipe ainda não tiver um
+      // layoutConfig próprio, pra não sobrescrever um ajuste já feito.
+      if (layoutMode && !editorState.layoutConfig) {
+        const layoutConfig = { ...(lastSplitLayoutConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode] }
+        await fetch(`/api/clips/${clip.id}/editor`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ layoutMode, layoutConfig }),
+        })
+        setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))
+      }
       const res = await fetch(`/api/clips/${clip.id}/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,6 +152,16 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
                 textOverlays: s.textOverlays.map((o) => (o.id === id ? { ...o, x, y } : o)),
               }))
             }
+            splitLayout={
+              editorState.layoutMode && editorState.layoutConfig
+                ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
+                : undefined
+            }
+            onSplitLayoutRegionMove={(x, y) =>
+              setEditorState((s) =>
+                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y } } } : s
+              )
+            }
           />
           <div className="glass rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-white/40">
@@ -159,6 +184,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
             <TabButton active={tab === 'captions'} onClick={() => setTab('captions')} icon={<Captions className="w-3.5 h-3.5" />} label="Legendas" />
             <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
             <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
+            <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
           </div>
 
           {tab === 'captions' && (
@@ -193,6 +219,15 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState 
               duration={duration}
               currentTime={currentTime}
               onChange={(effects) => setEditorState((s) => ({ ...s, effects }))}
+            />
+          )}
+          {tab === 'layout' && (
+            <LayoutPanel
+              layoutMode={editorState.layoutMode}
+              layoutConfig={editorState.layoutConfig}
+              lastUsedConfig={lastSplitLayoutConfig}
+              detectEndpoint={`/api/clips/${clip.id}/detect-facecam`}
+              onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}
         </div>
