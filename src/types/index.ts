@@ -194,6 +194,11 @@ export interface SplitLayoutConfig {
   facecamRegion: SplitLayoutRegion
   facecamZoom: number // 1.0 = sem zoom extra
   splitRatio: number // fração 0-1 da altura ocupada pelo painel de CIMA
+  // true = região veio de detecção automática (IA) bem-sucedida OU de ajuste
+  // manual confirmado pelo usuário. false/undefined = ainda é só o palpite
+  // padrão (canto inferior direito) — usado pra mostrar aviso de fallback
+  // em vez de deixar o usuário achar que aquilo já foi detectado de verdade.
+  facecamConfirmed?: boolean
 }
 
 export const SPLIT_LAYOUT_LABELS: Record<SplitLayoutMode, string> = {

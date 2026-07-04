@@ -83,9 +83,24 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
     try {
       // Layout escolhido no modal (na hora de gerar, antes de já ter mexido
       // na aba "Layout") — só grava um padrão se o clipe ainda não tiver um
-      // layoutConfig próprio, pra não sobrescrever um ajuste já feito.
+      // layoutConfig próprio, pra não sobrescrever um ajuste já feito. Se
+      // não há ajuste salvo do usuário (lastSplitLayoutConfig), tenta
+      // detectar a facecam de verdade em vez de já cair no palpite padrão.
       if (layoutMode && !editorState.layoutConfig) {
-        const layoutConfig = { ...(lastSplitLayoutConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode] }
+        let layoutConfig = { ...(lastSplitLayoutConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode] }
+        if (!lastSplitLayoutConfig) {
+          try {
+            const detectRes = await fetch(`/api/clips/${clip.id}/detect-facecam`, { method: 'POST' })
+            const detectBody = await detectRes.json().catch(() => null)
+            if (detectRes.ok && detectBody?.detected && detectBody.region) {
+              layoutConfig = { ...layoutConfig, facecamRegion: detectBody.region, facecamConfirmed: true }
+            } else {
+              layoutConfig = { ...layoutConfig, facecamConfirmed: false }
+            }
+          } catch {
+            layoutConfig = { ...layoutConfig, facecamConfirmed: false }
+          }
+        }
         await fetch(`/api/clips/${clip.id}/editor`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -159,7 +174,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
             }
             onSplitLayoutRegionMove={(x, y) =>
               setEditorState((s) =>
-                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y } } } : s
+                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
               )
             }
           />

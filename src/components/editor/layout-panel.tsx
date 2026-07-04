@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle } from 'lucide-react'
 import {
   SPLIT_LAYOUT_LABELS, DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE,
   type SplitLayoutMode, type SplitLayoutConfig,
@@ -38,9 +38,12 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
     onChange(mode, { ...(lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[mode] })
   }
 
+  // Qualquer edição manual (arrastar, digitar nos campos, mexer no zoom) já
+  // conta como "confirmado" — o usuário assumiu o controle da posição, não
+  // faz mais sentido mostrar o aviso de "isso é só um palpite padrão".
   const updateConfig = (patch: Partial<SplitLayoutConfig>) => {
     if (!layoutMode) return
-    onChange(layoutMode, { ...config, ...patch })
+    onChange(layoutMode, { ...config, facecamConfirmed: true, ...patch })
   }
 
   const updateRegion = (patch: Partial<SplitLayoutConfig['facecamRegion']>) => {
@@ -55,16 +58,19 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error || 'Falha ao detectar a facecam')
       if (!body.detected) {
-        setDetectError('Nenhuma facecam detectada com confiança suficiente — ajuste manualmente.')
+        setDetectError('Facecam não detectada automaticamente. Ajuste manualmente a área.')
+        if (layoutMode) onChange(layoutMode, { ...config, facecamConfirmed: false })
         return
       }
-      updateRegion(body.region)
+      if (layoutMode) onChange(layoutMode, { ...config, facecamRegion: body.region, facecamConfirmed: true })
     } catch (err: any) {
       setDetectError(err.message || 'Falha ao detectar a facecam')
     } finally {
       setDetecting(false)
     }
   }
+
+  const showFallbackWarning = !!layoutMode && layoutConfig?.facecamConfirmed === false
 
   const pct = (n: number) => Math.round(n * 100)
 
@@ -94,6 +100,12 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
 
       {layoutMode && (
         <div className="space-y-3 pt-1">
+          {showFallbackWarning && !detectError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Facecam não detectada automaticamente. Ajuste manualmente a área abaixo (ou tente detectar de novo).</span>
+            </div>
+          )}
           <button
             onClick={detectAutomatically}
             disabled={detecting}

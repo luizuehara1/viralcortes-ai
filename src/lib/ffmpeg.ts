@@ -312,11 +312,17 @@ function buildSplitLayoutFilters(
 
   const filters: ffmpeg.FilterSpecification[] = [
     { filter: 'fps', options: `fps=${OUTPUT_FPS}`, inputs: '0:v', outputs: 'v30' },
+    // 'v30' precisa alimentar DOIS ramos (painel principal e painel da
+    // facecam) — um split explícito, em vez de contar com o ffmpeg
+    // auto-duplicar um label consumido duas vezes. Builds mais antigos de
+    // ffmpeg (ex.: o do container de produção, via apt) não fazem esse
+    // auto-split e falham com "Invalid stream specifier" — visto na prática.
+    { filter: 'split', options: '2', inputs: 'v30', outputs: ['v30main', 'v30fc'] },
     // Painel "principal": cover-crop do frame inteiro pra preencher W x altura do painel.
-    { filter: 'scale', options: `${canvasW}:${mainPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'v30', outputs: 'mainScaled' },
+    { filter: 'scale', options: `${canvasW}:${mainPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'v30main', outputs: 'mainScaled' },
     { filter: 'crop', options: `${canvasW}:${mainPanelHeight}`, inputs: 'mainScaled', outputs: 'mainPanel' },
     // Painel "facecam": crop já com zoom embutido, depois cover-crop pra preencher W x altura do painel.
-    { filter: 'crop', options: `${cropW}:${cropH}:${cropX}:${cropY}`, inputs: 'v30', outputs: 'fcCropped' },
+    { filter: 'crop', options: `${cropW}:${cropH}:${cropX}:${cropY}`, inputs: 'v30fc', outputs: 'fcCropped' },
     { filter: 'scale', options: `${canvasW}:${facecamPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'fcCropped', outputs: 'fcScaled' },
     { filter: 'crop', options: `${canvasW}:${facecamPanelHeight}`, inputs: 'fcScaled', outputs: 'facecamPanel' },
   ]

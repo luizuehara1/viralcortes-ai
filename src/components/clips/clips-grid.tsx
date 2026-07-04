@@ -44,16 +44,34 @@ export function ClipsGrid({ clips }: Props) {
     let failed = 0
     for (const id of Array.from(selected)) {
       try {
-        // Layout com facecam escolhido no modal — grava uma posição padrão
-        // antes de renderizar (o usuário ajusta depois no editor, aba
-        // "Layout", se quiser refinar).
+        // Layout com facecam escolhido no modal — tenta detectar a facecam
+        // de verdade antes de renderizar (em vez de sempre cair no palpite
+        // padrão calado); se a detecção falhar, usa o padrão mas marca
+        // facecamConfirmed:false pra aba "Layout" avisar que precisa ajuste.
         if (layoutMode) {
+          let facecamRegion = DEFAULT_SPLIT_LAYOUT_CONFIG.facecamRegion
+          let facecamConfirmed = false
+          try {
+            const detectRes = await fetch(`/api/clips/${id}/detect-facecam`, { method: 'POST' })
+            const detectBody = await detectRes.json().catch(() => null)
+            if (detectRes.ok && detectBody?.detected && detectBody.region) {
+              facecamRegion = detectBody.region
+              facecamConfirmed = true
+            }
+          } catch {
+            // segue com o padrão — falha de detecção não deve travar a geração
+          }
           await fetch(`/api/clips/${id}/editor`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               layoutMode,
-              layoutConfig: { ...DEFAULT_SPLIT_LAYOUT_CONFIG, splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode] },
+              layoutConfig: {
+                ...DEFAULT_SPLIT_LAYOUT_CONFIG,
+                facecamRegion,
+                facecamConfirmed,
+                splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[layoutMode],
+              },
             }),
           }).catch(() => {})
         }

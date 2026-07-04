@@ -168,7 +168,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
             }
             onSplitLayoutRegionMove={(x, y) =>
               setEditorState((s) =>
-                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y } } } : s
+                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
               )
             }
           />
