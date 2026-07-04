@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { ClipEditor } from '@/components/editor/clip-editor'
 import { MediaMissingNotice } from '@/components/editor/media-missing-notice'
 import { DEFAULT_EDITOR_STATE, type EditorState, type SplitLayoutConfig } from '@/types'
+import { withDefaultVideoLayer } from '@/lib/editor-state'
 
 interface Props {
   params: { id: string }
@@ -31,7 +32,15 @@ export default async function ClipEditorPage({ params }: Props) {
     return <MediaMissingNotice backHref={`/projects/${clip.sourceVideo.projectId}`} backLabel="Voltar ao projeto" />
   }
 
-  const editorState = (clip.editorState as EditorState | null) || DEFAULT_EDITOR_STATE
+  // withDefaultVideoLayer é o que sintetiza a camada VIDEO a partir do
+  // transform legado (ou identidade) — sem essa chamada aqui (a página que
+  // renderiza no primeiro load, não a rota GET de autosave), editorState.layers
+  // fica undefined e a caixa de seleção/arraste do vídeo nunca aparece no
+  // preview (bug real: a rota de API já tinha isso, a página não).
+  const editorState = withDefaultVideoLayer(
+    (clip.editorState as EditorState | null) || DEFAULT_EDITOR_STATE,
+    clip.endTime - clip.startTime
+  )
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return (

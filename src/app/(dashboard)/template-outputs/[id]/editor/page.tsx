@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { TemplateOutputEditor } from '@/components/editor/template-output-editor'
 import { MediaMissingNotice } from '@/components/editor/media-missing-notice'
 import { DEFAULT_EDITOR_STATE, type EditorState, type SplitLayoutConfig } from '@/types'
+import { withDefaultVideoLayer } from '@/lib/editor-state'
 
 interface Props {
   params: { id: string }
@@ -30,7 +31,12 @@ export default async function TemplateOutputEditorPage({ params }: Props) {
     return <MediaMissingNotice backHref="/template-studio" backLabel="Voltar ao Template Studio" />
   }
 
-  const editorState = (output.editorState as EditorState | null) || DEFAULT_EDITOR_STATE
+  // Ver comentário equivalente em clips/[id]/editor/page.tsx — sem isso, a
+  // caixa de seleção/arraste do vídeo no preview nunca aparece.
+  const editorState = withDefaultVideoLayer(
+    (output.editorState as EditorState | null) || DEFAULT_EDITOR_STATE,
+    output.duration || 0
+  )
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return (

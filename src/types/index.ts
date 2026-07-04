@@ -151,7 +151,7 @@ export interface CaptionSegment {
   editedText?: string // se o usuário corrigir o texto reconhecido pelo Whisper
 }
 
-export type EffectType = 'colorFilter' | 'zoomPan'
+export type EffectType = 'colorFilter' | 'zoomPan' | 'zoomPunch' | 'shake' | 'blur' | 'flash' | 'vignette' | 'sharpen' | 'grain' | 'rgbSplit'
 
 // Valores no mesmo range do filtro `eq` do FFmpeg (usados direto, sem
 // conversão) — brightness 0 = neutro (-1..1), contrast/saturation 1 = neutro.
@@ -166,12 +166,23 @@ export interface ZoomPanParams {
   toScale: number // ex: 1.15 (efeito Ken Burns)
 }
 
+// Efeitos "pesados" novos — todos com um único slider de intensidade
+// (0-1), convertido pros parâmetros reais do filtro do FFmpeg na hora de
+// montar o filtro (ver buildHeavyEffectFilter em ffmpeg.ts). Testados contra
+// o binário real do ffmpeg antes de entrar (boxblur/vignette/unsharp/eq/
+// noise/rgbashift — todos com suporte nativo a timeline via `enable`; shake
+// e zoomPunch usam o mesmo truque de zoomPan de embutir a janela de tempo
+// dentro da própria expressão, já que scale/crop não aceitam `enable`).
+export interface IntensityEffectParams {
+  intensity: number // 0-1
+}
+
 export interface Effect {
   id: string
   type: EffectType
   startTime: number
   endTime: number
-  params: ColorFilterParams | ZoomPanParams
+  params: ColorFilterParams | ZoomPanParams | IntensityEffectParams
 }
 
 // Layouts "split-screen" pra cortes verticais com facecam — empilha duas

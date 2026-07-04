@@ -1,7 +1,9 @@
 'use client'
 
-import { Sun, ZoomIn, Trash2 } from 'lucide-react'
-import type { Effect, ColorFilterParams, ZoomPanParams } from '@/types'
+import {
+  Sun, ZoomIn, Trash2, Zap, Vibrate, Droplets, Sparkle, Aperture, Focus, Grip, SplitSquareHorizontal,
+} from 'lucide-react'
+import type { Effect, ColorFilterParams, ZoomPanParams, IntensityEffectParams, EffectType } from '@/types'
 
 interface Props {
   effects: Effect[]
@@ -10,12 +12,43 @@ interface Props {
   onChange: (effects: Effect[]) => void
 }
 
+const EFFECT_LABELS: Record<EffectType, string> = {
+  colorFilter: 'Filtro de cor',
+  zoomPan: 'Zoom/Pan',
+  zoomPunch: 'Zoom punch',
+  shake: 'Shake',
+  blur: 'Blur',
+  flash: 'Flash',
+  vignette: 'Vinheta',
+  sharpen: 'Sharpen',
+  grain: 'Grain',
+  rgbSplit: 'RGB split',
+}
+
+// Efeitos "pesados" novos — todos com um único parâmetro de intensidade
+// (0-1), aplicados só no trecho [startTime, endTime] escolhido (nunca no
+// vídeo inteiro à toa). Duração padrão de 1s ao adicionar — mais curta que
+// os efeitos de zoom/cor de antes, já que shake/flash/zoomPunch costumam
+// ser rápidos.
+const INTENSITY_EFFECTS: { type: EffectType; icon: React.ReactNode; defaultDuration: number }[] = [
+  { type: 'zoomPunch', icon: <Zap className="w-3.5 h-3.5" />, defaultDuration: 0.6 },
+  { type: 'shake', icon: <Vibrate className="w-3.5 h-3.5" />, defaultDuration: 0.5 },
+  { type: 'blur', icon: <Droplets className="w-3.5 h-3.5" />, defaultDuration: 1 },
+  { type: 'flash', icon: <Sparkle className="w-3.5 h-3.5" />, defaultDuration: 0.2 },
+  { type: 'vignette', icon: <Aperture className="w-3.5 h-3.5" />, defaultDuration: 3 },
+  { type: 'sharpen', icon: <Focus className="w-3.5 h-3.5" />, defaultDuration: 3 },
+  { type: 'grain', icon: <Grip className="w-3.5 h-3.5" />, defaultDuration: 3 },
+  { type: 'rgbSplit', icon: <SplitSquareHorizontal className="w-3.5 h-3.5" />, defaultDuration: 0.4 },
+]
+
 export function EffectsPanel({ effects, duration, currentTime, onChange }: Props) {
-  const addEffect = (type: Effect['type']) => {
+  const addEffect = (type: EffectType, defaultDuration = 3) => {
     const start = currentTime
-    const end = Math.min(duration, currentTime + 3)
-    const params: ColorFilterParams | ZoomPanParams =
-      type === 'colorFilter' ? { brightness: 0, contrast: 1.1, saturation: 1.2 } : { fromScale: 1, toScale: 1.15 }
+    const end = Math.min(duration, currentTime + defaultDuration)
+    const params: ColorFilterParams | ZoomPanParams | IntensityEffectParams =
+      type === 'colorFilter' ? { brightness: 0, contrast: 1.1, saturation: 1.2 }
+      : type === 'zoomPan' ? { fromScale: 1, toScale: 1.15 }
+      : { intensity: 0.5 }
     onChange([...effects, { id: `fx-${Date.now()}`, type, startTime: start, endTime: end, params }])
   }
 
@@ -39,13 +72,27 @@ export function EffectsPanel({ effects, duration, currentTime, onChange }: Props
         </button>
       </div>
 
+      <div className="grid grid-cols-4 gap-1.5">
+        {INTENSITY_EFFECTS.map(({ type, icon, defaultDuration }) => (
+          <button
+            key={type}
+            onClick={() => addEffect(type, defaultDuration)}
+            title={EFFECT_LABELS[type]}
+            className="flex flex-col items-center gap-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-medium transition-colors"
+          >
+            {icon}
+            {EFFECT_LABELS[type]}
+          </button>
+        ))}
+      </div>
+
       {effects.length === 0 && <p className="text-xs text-white/30 text-center py-4">Nenhum efeito adicionado</p>}
 
       <div className="max-h-[26rem] overflow-y-auto space-y-2">
         {effects.map((effect) => (
           <div key={effect.id} className="p-3 rounded-xl bg-white/3 border border-white/5 space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium">{effect.type === 'colorFilter' ? 'Filtro de cor' : 'Zoom/Pan'}</span>
+              <span className="text-xs font-medium">{EFFECT_LABELS[effect.type]}</span>
               <button onClick={() => removeEffect(effect.id)} className="text-white/30 hover:text-red-400 transition-colors">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -75,8 +122,10 @@ export function EffectsPanel({ effects, duration, currentTime, onChange }: Props
                 params={effect.params as ColorFilterParams}
                 onChange={(params) => updateEffect(effect.id, { params })}
               />
-            ) : (
+            ) : effect.type === 'zoomPan' ? (
               <ZoomPanControls params={effect.params as ZoomPanParams} onChange={(params) => updateEffect(effect.id, { params })} />
+            ) : (
+              <IntensityControls params={effect.params as IntensityEffectParams} onChange={(params) => updateEffect(effect.id, { params })} />
             )}
           </div>
         ))}
@@ -100,6 +149,14 @@ function ZoomPanControls({ params, onChange }: { params: ZoomPanParams; onChange
     <div className="space-y-1.5">
       <SliderRow label="Zoom inicial" value={params.fromScale} min={1} max={2} step={0.05} onChange={(v) => onChange({ ...params, fromScale: v })} />
       <SliderRow label="Zoom final" value={params.toScale} min={1} max={2} step={0.05} onChange={(v) => onChange({ ...params, toScale: v })} />
+    </div>
+  )
+}
+
+function IntensityControls({ params, onChange }: { params: IntensityEffectParams; onChange: (p: IntensityEffectParams) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <SliderRow label="Intensidade" value={params.intensity} min={0} max={1} step={0.05} onChange={(v) => onChange({ intensity: v })} />
     </div>
   )
 }

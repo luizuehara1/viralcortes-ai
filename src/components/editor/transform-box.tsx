@@ -27,7 +27,14 @@ export function TransformBox({ selected, onSelect, onStartMove, onStartScale }: 
   return (
     <div
       className={`absolute inset-0 ${selected ? 'cursor-move' : 'cursor-pointer'}`}
-      style={{ zIndex: 15 }}
+      // z-index ABAIXO dos overlays de texto/região de facecam (ambos usam
+      // 10) — de propósito: essa caixa cobre o canvas inteiro, então se
+      // ficasse por cima bloquearia o clique nesses elementos menores e mais
+      // específicos que já eram arrastáveis antes. Clicar direto num texto/
+      // região ainda funciona (z-index maior vence no ponto exato); clicar
+      // em qualquer outro lugar do vídeo cai aqui, pra selecionar/mover a
+      // camada de vídeo.
+      style={{ zIndex: 5 }}
       onMouseDown={(e) => {
         e.preventDefault()
         if (!selected) {

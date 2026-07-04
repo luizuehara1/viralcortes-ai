@@ -436,11 +436,16 @@ export function VideoPreviewPlayer({
       )}
 
       {videoError ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 px-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 px-6 text-center z-20">
           <p className="text-sm font-medium text-red-400">Vídeo não carregou</p>
           <p className="text-xs text-white/50">{videoError}</p>
         </div>
-      ) : !playing && (
+      ) : !playing && !(videoLayer && onLayerTransformChange) && (
+        // Só mostra o botão de play gigante cobrindo a tela toda quando NÃO
+        // existe uma camada de vídeo selecionável (senão ele bloquearia o
+        // clique de seleção/arraste — TransformBox cobre a mesma área com
+        // z-index maior). Com a camada, dá pra tocar/pausar pelo botão da
+        // barra de transporte embaixo do preview.
         <button
           onClick={() => onPlayingChange(true)}
           className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"

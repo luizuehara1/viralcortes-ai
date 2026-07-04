@@ -89,7 +89,7 @@ const captionStyleSchema = z.object({
 
 const effectSchema = z.object({
   id: z.string(),
-  type: z.enum(['colorFilter', 'zoomPan']),
+  type: z.enum(['colorFilter', 'zoomPan', 'zoomPunch', 'shake', 'blur', 'flash', 'vignette', 'sharpen', 'grain', 'rgbSplit']),
   startTime: z.number(),
   endTime: z.number(),
   params: z.record(z.number()),

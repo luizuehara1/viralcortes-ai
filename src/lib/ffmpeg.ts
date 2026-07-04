@@ -803,6 +803,58 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
         editorFilters.push(
           `crop=${frameW}:${frameH}:x='(iw-${frameW})/2':y='(ih-${frameH})/2'`
         )
+      } else if (effect.type === 'zoomPunch') {
+        // "Pulo" de zoom que sobe e volta dentro da própria janela do efeito
+        // (diferente do zoomPan, que é uma rampa linear do início ao fim) —
+        // mesma técnica de scale+crop com janela de tempo embutida na
+        // expressão (não dá pra usar `enable` no scale, testado antes).
+        const p = effect.params as { intensity: number }
+        const peak = Math.min(1, Math.max(0, p.intensity)) * 0.5
+        const punchExpr = `(1+${peak}*sin(PI*(t-${effect.startTime})/${dur}))`
+        const zoomFactor = `if(between(t,${effect.startTime},${effect.endTime}),${punchExpr},1)`
+        editorFilters.push(`scale=w='iw*${zoomFactor}':h='ih*${zoomFactor}':eval=frame`)
+        editorFilters.push(`crop=${frameW}:${frameH}:x='(iw-${frameW})/2':y='(ih-${frameH})/2'`)
+      } else if (effect.type === 'shake') {
+        // Tremor de câmera: aumenta o frame um pouco (só durante a janela do
+        // efeito, embutido na expressão) pra abrir espaço, depois recorta
+        // com x/y oscilando em senoides de frequências diferentes (evita um
+        // padrão óbvio de vai-e-volta reto).
+        const p = effect.params as { intensity: number }
+        const amp = Math.round(Math.min(1, Math.max(0, p.intensity)) * 18)
+        const marginScale = 1 + Math.min(1, Math.max(0, p.intensity)) * 0.12
+        const zoomFactor = `if(between(t,${effect.startTime},${effect.endTime}),${marginScale},1)`
+        editorFilters.push(`scale=w='iw*${zoomFactor}':h='ih*${zoomFactor}':eval=frame`)
+        const gate = `between(t,${effect.startTime},${effect.endTime})`
+        editorFilters.push(
+          `crop=${frameW}:${frameH}:` +
+          `x='(iw-${frameW})/2+if(${gate},${amp}*sin(2*PI*9*t),0)':` +
+          `y='(ih-${frameH})/2+if(${gate},${amp}*cos(2*PI*13*t),0)'`
+        )
+      } else if (effect.type === 'blur') {
+        const p = effect.params as { intensity: number }
+        const radius = Math.round(Math.min(1, Math.max(0, p.intensity)) * 15)
+        editorFilters.push(`boxblur=luma_radius=${radius}:luma_power=1:enable='between(t,${effect.startTime},${effect.endTime})'`)
+      } else if (effect.type === 'flash') {
+        const p = effect.params as { intensity: number }
+        const brightness = Math.min(1, Math.max(0, p.intensity))
+        editorFilters.push(`eq=brightness=${brightness.toFixed(2)}:enable='between(t,${effect.startTime},${effect.endTime})'`)
+      } else if (effect.type === 'vignette') {
+        const p = effect.params as { intensity: number }
+        // Ângulo menor = vinheta mais fechada/forte; maior = mais suave.
+        const angleDiv = 5 - Math.min(1, Math.max(0, p.intensity)) * 3
+        editorFilters.push(`vignette=angle=PI/${angleDiv.toFixed(2)}:enable='between(t,${effect.startTime},${effect.endTime})'`)
+      } else if (effect.type === 'sharpen') {
+        const p = effect.params as { intensity: number }
+        const amount = (Math.min(1, Math.max(0, p.intensity)) * 2.5).toFixed(2)
+        editorFilters.push(`unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=${amount}:enable='between(t,${effect.startTime},${effect.endTime})'`)
+      } else if (effect.type === 'grain') {
+        const p = effect.params as { intensity: number }
+        const strength = Math.round(Math.min(1, Math.max(0, p.intensity)) * 40)
+        editorFilters.push(`noise=alls=${strength}:allf=t:enable='between(t,${effect.startTime},${effect.endTime})'`)
+      } else if (effect.type === 'rgbSplit') {
+        const p = effect.params as { intensity: number }
+        const shift = Math.round(Math.min(1, Math.max(0, p.intensity)) * 12)
+        editorFilters.push(`rgbashift=rh=${shift}:bh=-${shift}:enable='between(t,${effect.startTime},${effect.endTime})'`)
       }
     }
 
