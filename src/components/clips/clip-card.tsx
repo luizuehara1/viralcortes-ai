@@ -12,6 +12,8 @@ import type { ClipEmotion, ClipStatus, ClipFormat, FitMode } from '@/types'
 import { FormatPickerModal } from './format-picker-modal'
 import { ExportModal } from './export-modal'
 import { ScheduleModal } from '@/components/social/schedule-modal'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 interface RenderedClip {
   id: string
@@ -134,10 +136,18 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
   // 9:16, agenda essa; senão cai pra primeira renderização disponível.
   const scheduleTarget = renderedClips.find((r) => r.format === 'VERTICAL_9_16') || renderedClips[0]
 
+  const isTopClip = clip.viralScore >= 85
+
   return (
-    <div className={`glass rounded-2xl overflow-hidden transition-all duration-200 border ${
-      selected ? 'border-violet-500/50' : 'hover:border-violet-500/20 border-white/5'
+    <div className={`glass rounded-2xl overflow-hidden transition-all duration-200 border relative ${
+      selected ? 'border-violet-500/50' : isTopClip ? 'border-neon-500/30 shadow-neon' : 'hover:border-violet-500/20 border-white/5'
     }`}>
+      {isTopClip && (
+        <div className="absolute top-0 right-0 bg-gradient-neon text-black text-[10px] font-bold px-2.5 py-1 rounded-bl-lg flex items-center gap-1 z-10">
+          <TrendingUp className="w-3 h-3" />
+          TOP
+        </div>
+      )}
       {/* Header */}
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -243,14 +253,9 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
           <p className="text-xs text-red-400 mb-2 text-center">{error}</p>
         )}
         {status === 'SUGGESTED' || status === 'SELECTED' ? (
-          <button
-            onClick={() => setPickerOpen(true)}
-            disabled={rendering}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-all"
-          >
-            {rendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          <Button onClick={() => setPickerOpen(true)} loading={rendering} icon={<Sparkles className="w-4 h-4" />} className="w-full">
             {rendering ? 'Enfileirando...' : 'Gerar corte'}
-          </button>
+          </Button>
         ) : status === 'RENDERING' ? (
           <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-violet-400">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -258,13 +263,9 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
           </div>
         ) : status === 'RENDERED' && renderedClips.length > 0 ? (
           <div className="space-y-2">
-            <button
-              onClick={() => setExportOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-all"
-            >
-              <Share2 className="w-4 h-4" />
+            <Button onClick={() => setExportOpen(true)} icon={<Share2 className="w-4 h-4" />} className="w-full">
               Exportar para postar
-            </button>
+            </Button>
             <button
               onClick={() => setPickerOpen(true)}
               className="w-full flex items-center justify-center gap-2 py-2 text-xs text-white/40 hover:text-violet-400 transition-colors"
@@ -274,30 +275,19 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
             </button>
             {scheduleTarget && (
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
-                >
-                  <Instagram className="w-3.5 h-3.5" />
+                <Button onClick={() => setSchedulePlatform('INSTAGRAM_REELS')} variant="secondary" size="sm" icon={<Instagram className="w-3.5 h-3.5" />}>
                   Agendar Instagram
-                </button>
-                <button
-                  onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium transition-all"
-                >
-                  <Youtube className="w-3.5 h-3.5" />
+                </Button>
+                <Button onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')} variant="secondary" size="sm" icon={<Youtube className="w-3.5 h-3.5" />}>
                   Agendar YouTube
-                </button>
+                </Button>
               </div>
             )}
           </div>
         ) : status === 'FAILED' ? (
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-          >
+          <Button onClick={() => setPickerOpen(true)} variant="secondary" className="w-full">
             Tentar novamente
-          </button>
+          </Button>
         ) : null}
       </div>
 

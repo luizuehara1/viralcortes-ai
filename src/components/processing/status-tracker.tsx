@@ -7,6 +7,7 @@ import type { VideoStatus, SourceType } from '@/types'
 import { VIDEO_STATUS_STEPS } from '@/types'
 import { VideoUpload } from '@/components/upload/video-upload'
 import { VideoLinkImport } from '@/components/upload/video-link-import'
+import { Button } from '@/components/ui/button'
 
 const YOUTUBE_REQUIRES_LOGIN_OR_COOKIES = 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES'
 const PLATFORM_BLOCKED_ACCESS = 'PLATFORM_BLOCKED_ACCESS'
@@ -294,65 +295,60 @@ export function StatusTracker({
                 </p>
                 {actionError && <p className="text-xs text-red-400 mt-1">{actionError}</p>}
                 <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={retry}
-                    disabled={busy}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-xs font-medium transition-colors"
-                  >
-                    {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  <Button onClick={retry} loading={busy} size="sm" icon={<RotateCcw className="w-3.5 h-3.5" />}>
                     Tentar novamente
-                  </button>
-                  <button
-                    onClick={cancelProcessing}
-                    disabled={busy}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 disabled:opacity-50 text-xs font-medium transition-colors"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button onClick={cancelProcessing} disabled={busy} size="sm" variant="secondary" icon={<Ban className="w-3.5 h-3.5" />}>
                     Cancelar
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           )}
 
-          {steps.map((step) => {
-            // Compare against each step's own global step number (not local
-            // array position) so this works whether or not IMPORTING is
-            // present in the sequence.
-            const stepNum = VIDEO_STATUS_STEPS[step.key].step
-            const isDone = currentStep > stepNum || status === 'COMPLETED'
-            const isActive = currentStep === stepNum && status !== 'COMPLETED'
+          <div className="relative">
+            {/* Linha conectando as etapas — só um traço vertical atrás dos
+                ícones, efeito clássico de timeline. */}
+            <div className="absolute left-[27px] top-6 bottom-6 w-px bg-white/10" />
+            {steps.map((step) => {
+              // Compare against each step's own global step number (not local
+              // array position) so this works whether or not IMPORTING is
+              // present in the sequence.
+              const stepNum = VIDEO_STATUS_STEPS[step.key].step
+              const isDone = currentStep > stepNum || status === 'COMPLETED'
+              const isActive = currentStep === stepNum && status !== 'COMPLETED'
 
-            return (
-              <div key={step.key} className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
-                isActive ? 'bg-violet-500/10 border border-violet-500/20' : ''
-              }`}>
-                <div className="shrink-0">
-                  {isDone ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  ) : isActive ? (
-                    <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-white/20" />
+              return (
+                <div key={step.key} className={`relative flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                  isActive ? 'bg-violet-500/10 border border-violet-500/20' : ''
+                }`}>
+                  <div className="shrink-0 relative z-10 bg-surface-200 rounded-full">
+                    {isDone ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-400" />
+                    ) : isActive ? (
+                      <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
+                    ) : (
+                      <Circle className="w-5 h-5 text-white/20" />
+                    )}
+                  </div>
+                  <span className={`text-sm ${
+                    isDone ? 'text-white/70 line-through decoration-white/20' :
+                    isActive ? 'text-white font-medium' :
+                    'text-white/30'
+                  }`}>
+                    {step.label}
+                  </span>
+                  {isActive && (
+                    <span className="ml-auto text-xs text-violet-400 animate-pulse-slow">
+                      {isActive && chunkProgress && chunkProgress.totalChunks && chunkProgress.totalChunks > 1
+                        ? `${chunkProgress.type === 'TRANSCRIBE' ? 'Transcrevendo' : 'Analisando'} parte ${chunkProgress.currentChunk ?? chunkProgress.processedChunks ?? 0} de ${chunkProgress.totalChunks}`
+                        : 'processando...'}
+                    </span>
                   )}
                 </div>
-                <span className={`text-sm ${
-                  isDone ? 'text-white/70 line-through decoration-white/20' :
-                  isActive ? 'text-white font-medium' :
-                  'text-white/30'
-                }`}>
-                  {step.label}
-                </span>
-                {isActive && (
-                  <span className="ml-auto text-xs text-violet-400 animate-pulse-slow">
-                    {isActive && chunkProgress && chunkProgress.totalChunks && chunkProgress.totalChunks > 1
-                      ? `${chunkProgress.type === 'TRANSCRIBE' ? 'Transcrevendo' : 'Analisando'} parte ${chunkProgress.currentChunk ?? chunkProgress.processedChunks ?? 0} de ${chunkProgress.totalChunks}`
-                      : 'processando...'}
-                  </span>
-                )}
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
 
           {!stuck && (
             <button

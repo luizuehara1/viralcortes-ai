@@ -14,6 +14,9 @@ import { ProjectRefresher } from '@/components/clips/project-refresher'
 import { DeleteProjectButton } from '@/components/projects/delete-project-button'
 import { DeleteVideoButton } from '@/components/projects/delete-video-button'
 import { SOURCE_PLATFORM_LABELS } from '@/types'
+import { StatCard } from '@/components/ui/stat-card'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   params: { id: string }
@@ -90,12 +93,8 @@ export default async function ProjectPage({ params }: Props) {
               className="flex items-center gap-2 px-3 py-2 rounded-xl glass hover:bg-red-500/20 text-white/40 hover:text-red-400 text-sm font-medium transition-colors border border-white/10 disabled:opacity-50"
             />
           )}
-          <Link
-            href="/projects/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl glass hover:bg-white/8 text-sm font-medium transition-colors border border-white/10"
-          >
-            <Plus className="w-4 h-4" />
-            Novo vídeo
+          <Link href="/projects/new">
+            <Button variant="glass" icon={<Plus className="w-4 h-4" />}>Novo vídeo</Button>
           </Link>
           <DeleteProjectButton
             projectId={project.id}
@@ -137,45 +136,28 @@ export default async function ProjectPage({ params }: Props) {
       {/* Stats when completed */}
       {latestVideo?.status === 'COMPLETED' && clips.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
-          <div className="glass rounded-xl p-4">
-            <div className="flex items-center gap-2 text-white/50 text-sm mb-1.5">
-              <Scissors className="w-4 h-4" />
-              Cortes sugeridos
-            </div>
-            <p className="text-2xl font-bold">{clips.length}</p>
-          </div>
-          <div className="glass rounded-xl p-4">
-            <div className="flex items-center gap-2 text-white/50 text-sm mb-1.5">
-              <TrendingUp className="w-4 h-4" />
-              Score médio
-            </div>
-            <p className="text-2xl font-bold">
-              {clips.length ? Math.round(clips.reduce((a, c) => a + c.viralScore, 0) / clips.length) : 0}
-            </p>
-          </div>
-          <div className="glass rounded-xl p-4">
-            <div className="flex items-center gap-2 text-white/50 text-sm mb-1.5">
-              <Download className="w-4 h-4" />
-              Prontos para baixar
-            </div>
-            <p className="text-2xl font-bold">{renderedCount}</p>
-          </div>
+          <StatCard icon={Scissors} label="Cortes sugeridos" value={clips.length} />
+          <StatCard
+            icon={TrendingUp}
+            label="Score médio"
+            value={clips.length ? Math.round(clips.reduce((a, c) => a + c.viralScore, 0) / clips.length) : 0}
+            tone="neon"
+          />
+          <StatCard icon={Download} label="Prontos para baixar" value={renderedCount} tone="neon" />
         </div>
       )}
 
       {/* No video yet */}
       {!latestVideo && (
-        <div className="glass rounded-2xl p-12 text-center">
-          <FolderOpen className="w-12 h-12 text-white/20 mx-auto mb-4" />
-          <p className="text-white/50 mb-4">Nenhum vídeo neste projeto</p>
-          <Link
-            href="/projects/new"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Adicionar vídeo
-          </Link>
-        </div>
+        <EmptyState
+          icon={FolderOpen}
+          title="Nenhum vídeo neste projeto"
+          action={
+            <Link href="/projects/new">
+              <Button icon={<Plus className="w-4 h-4" />}>Adicionar vídeo</Button>
+            </Link>
+          }
+        />
       )}
 
       {/* Clips grid */}
@@ -183,11 +165,11 @@ export default async function ProjectPage({ params }: Props) {
 
       {/* Waiting for clips */}
       {latestVideo?.status === 'COMPLETED' && clips.length === 0 && (
-        <div className="glass rounded-2xl p-12 text-center">
-          <Scissors className="w-12 h-12 text-white/20 mx-auto mb-4" />
-          <p className="text-white/50">Nenhum corte foi identificado neste vídeo.</p>
-          <p className="text-white/30 text-sm mt-1">Tente com um vídeo diferente.</p>
-        </div>
+        <EmptyState
+          icon={Scissors}
+          title="Nenhum corte foi identificado neste vídeo."
+          description="Tente com um vídeo diferente."
+        />
       )}
     </div>
   )
