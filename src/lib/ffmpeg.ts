@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
-import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId, SplitLayoutMode, SplitLayoutConfig } from '@/types'
+import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId, SplitLayoutMode, SplitLayoutConfig, VideoTransform } from '@/types'
 
 if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
 if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH)
@@ -295,6 +295,11 @@ export interface RenderClipOptions {
   // ver buildSplitLayoutFilters. Ausente = comportamento normal de sempre.
   layoutMode?: SplitLayoutMode
   layoutConfig?: SplitLayoutConfig
+  // Zoom/posição manual do vídeo principal — sobrepõe fitMode (vira um
+  // "COVER" com zoom extra e ponto de corte deslocado). Ignorado quando
+  // hasSplitLayout está ativo (o layout split já define sua própria
+  // composição) ou format é 'ORIGINAL' (nunca cropa/faz zoom).
+  transform?: VideoTransform
   onProgress?: (progress: number) => void
 }
 
@@ -303,6 +308,38 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
   SQUARE_1_1:     { width: 1080, height: 1080 },
   HORIZONTAL_16_9:{ width: 1920, height: 1080 },
   FEED_4_5:       { width: 1080, height: 1350 },
+}
+
+// Zoom/posição manual do vídeo principal — generaliza o "cover crop" que o
+// fitMode COVER já faz (scale increase + crop centralizado): em zoom=1 e
+// position=0,0 o resultado é idêntico ao COVER de hoje. zoom>1 escala o
+// alvo do "increase" além do canvas (mais imagem fica disponível depois do
+// crop) e positionX/Y desloca o ponto do crop dentro dessa folga, em vez de
+// sempre pegar o centro.
+function buildTransformFilter(
+  t: VideoTransform,
+  canvasW: number,
+  canvasH: number
+): string[] {
+  const zoom = Math.max(1, t.zoom)
+  const targetW = Math.round(canvasW * zoom / 2) * 2
+  const targetH = Math.round(canvasH * zoom / 2) * 2
+
+  // x/y do crop usam expressões do próprio ffmpeg (in_w/in_h = dimensão real
+  // que SAIU do scale acima) em vez de um valor pré-calculado em JS — o
+  // "force_original_aspect_ratio=increase" arredonda internamente do jeito
+  // dele, e um offset fixo calculado à parte podia ficar levemente
+  // diferente da largura/altura real, estourando os limites do crop.
+  // halfX/halfY viram 0 (extremo esquerdo/topo) a 1 (extremo direito/base).
+  const halfX = (1 + Math.min(1, Math.max(-1, t.positionX))) / 2
+  const halfY = (1 + Math.min(1, Math.max(-1, t.positionY))) / 2
+
+  return [
+    'fps=30',
+    `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase:flags=lanczos`,
+    `crop=${canvasW}:${canvasH}:(in_w-${canvasW})*${halfX.toFixed(4)}:(in_h-${canvasH})*${halfY.toFixed(4)}`,
+    'format=yuv420p',
+  ]
 }
 
 // Empilha duas regiões do MESMO vídeo fonte uma em cima da outra (layout
@@ -505,8 +542,16 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   // getFrameSize() ser definida (algumas linhas abaixo), porque precisa
   // conhecer as dimensões do canvas de saída antes de montar o filtro.
   const hasSplitLayout = !!(opts.layoutMode && opts.layoutConfig)
+  // Zoom/posição manual — só ativa quando difere de fato do padrão (evita
+  // trabalho extra no caminho comum sem transform). Funciona mesmo com
+  // format 'ORIGINAL' (TemplateOutput sempre usa 'ORIGINAL') — getFrameSize()
+  // já resolve o canvas certo (dimensão nativa da fonte) nesse caso, então
+  // zoom/posição vira "aproximar mantendo a mesma resolução de saída".
+  const t = opts.transform
+  const hasTransform =
+    !hasSplitLayout && !!t && (t.zoom > 1.001 || Math.abs(t.positionX) > 0.001 || Math.abs(t.positionY) > 0.001)
 
-  if (hasSplitLayout) {
+  if (hasSplitLayout || hasTransform) {
     // placeholder — sobrescrito abaixo, depois que getFrameSize existir.
   } else if (isOriginal) {
     // Keeps the source aspect ratio untouched — no crop, no scale to a fixed
@@ -577,6 +622,9 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
     )
     vfFilters = []
     finalVideoLabel = 'outv'
+  } else if (hasTransform) {
+    const { width: canvasW, height: canvasH } = await getFrameSize()
+    vfFilters = buildTransformFilter(t!, canvasW, canvasH)
   }
 
   // 'clean' is the default: no drawtext, no burned-in title/caption, no box.

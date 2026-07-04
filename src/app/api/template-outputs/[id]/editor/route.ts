@@ -100,6 +100,12 @@ const splitLayoutConfigSchema = z.object({
   facecamConfirmed: z.boolean().optional(),
 })
 
+const videoTransformSchema = z.object({
+  zoom: z.number().min(1).max(4),
+  positionX: z.number().min(-1).max(1),
+  positionY: z.number().min(-1).max(1),
+})
+
 const patchSchema = z.object({
   textOverlays: z.array(textOverlaySchema).optional(),
   captions: z.array(captionSegmentSchema).optional(),
@@ -107,6 +113,7 @@ const patchSchema = z.object({
   effects: z.array(effectSchema).optional(),
   layoutMode: z.enum(['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']).nullable().optional(),
   layoutConfig: splitLayoutConfigSchema.optional(),
+  transform: videoTransformSchema.optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

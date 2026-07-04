@@ -52,6 +52,7 @@ async function processClipRender(job: Job) {
     // renderClip, ver src/lib/ffmpeg.ts.
     layoutMode: editorState?.layoutMode ?? undefined,
     layoutConfig: editorState?.layoutConfig,
+    transform: editorState?.transform,
     onProgress: async (progress) => {
       await job.updateProgress(progress)
     },

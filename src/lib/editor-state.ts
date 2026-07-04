@@ -16,5 +16,6 @@ export function mergeEditorState(existing: unknown, updates: Partial<EditorState
     // presença da chave em vez de usar nullish coalescing aqui.
     layoutMode: 'layoutMode' in updates ? updates.layoutMode : base.layoutMode,
     layoutConfig: updates.layoutConfig ?? base.layoutConfig,
+    transform: updates.transform ?? base.transform,
   }
 }

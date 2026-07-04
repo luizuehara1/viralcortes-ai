@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, LayoutTemplate } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, LayoutTemplate, Move3d } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
+import { TransformPanel } from './transform-panel'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
 import { TabButton } from '@/components/ui/tab-button'
@@ -20,7 +21,7 @@ interface Props {
   lastSplitLayoutConfig: SplitLayoutConfig | null
 }
 
-type Tab = 'captions' | 'text' | 'effects' | 'layout'
+type Tab = 'captions' | 'text' | 'effects' | 'layout' | 'transform'
 
 // Editor do resultado do Template Studio — mesma UI/lógica do ClipEditor
 // (src/components/editor/clip-editor.tsx), mas sem sourceVideoId/projectId/
@@ -171,6 +172,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
                 s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
               )
             }
+            transform={editorState.transform}
           />
           <div className="glass rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-white/40">
@@ -194,6 +196,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
             <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
             <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
             <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
+            <TabButton active={tab === 'transform'} onClick={() => setTab('transform')} icon={<Move3d className="w-3.5 h-3.5" />} label="Transformar" />
           </div>
 
           {tab === 'captions' && (
@@ -238,6 +241,12 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
               detectEndpoint={`/api/template-outputs/${output.id}/detect-facecam`}
               previewEndpoint={`/api/template-outputs/${output.id}/facecam-preview`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
+            />
+          )}
+          {tab === 'transform' && (
+            <TransformPanel
+              transform={editorState.transform}
+              onChange={(transform) => setEditorState((s) => ({ ...s, transform }))}
             />
           )}
         </div>

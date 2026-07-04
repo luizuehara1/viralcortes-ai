@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2, LayoutTemplate } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, LayoutTemplate, Move3d } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
+import { TransformPanel } from './transform-panel'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
 import { Button } from '@/components/ui/button'
 import { TabButton } from '@/components/ui/tab-button'
@@ -24,7 +25,7 @@ interface Props {
   lastSplitLayoutConfig: SplitLayoutConfig | null
 }
 
-type Tab = 'captions' | 'text' | 'effects' | 'layout'
+type Tab = 'captions' | 'text' | 'effects' | 'layout' | 'transform'
 
 // Orquestra o editor inteiro: preview + autosave do editorState + disparo do
 // render (que já pega os overlays/legendas/efeitos automaticamente no
@@ -177,6 +178,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
                 s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
               )
             }
+            transform={editorState.transform}
           />
           <div className="glass rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-white/40">
@@ -200,6 +202,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
             <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
             <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
             <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
+            <TabButton active={tab === 'transform'} onClick={() => setTab('transform')} icon={<Move3d className="w-3.5 h-3.5" />} label="Transformar" />
           </div>
 
           {tab === 'captions' && (
@@ -244,6 +247,12 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
               detectEndpoint={`/api/clips/${clip.id}/detect-facecam`}
               previewEndpoint={`/api/clips/${clip.id}/facecam-preview`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
+            />
+          )}
+          {tab === 'transform' && (
+            <TransformPanel
+              transform={editorState.transform}
+              onChange={(transform) => setEditorState((s) => ({ ...s, transform }))}
             />
           )}
         </div>

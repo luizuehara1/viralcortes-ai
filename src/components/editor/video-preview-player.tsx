@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   FONT_OPTIONS, DEFAULT_FONT_FAMILY,
   type TextOverlay, type CaptionSegment, type CaptionStyle, type FontFamilyId,
-  type SplitLayoutRegion, type SplitLayoutMode,
+  type SplitLayoutRegion, type SplitLayoutMode, type VideoTransform,
 } from '@/types'
 
 interface SeekRequest {
@@ -37,6 +37,10 @@ interface Props {
   // final) — o resultado exato só aparece depois de renderizar.
   splitLayout?: { region: SplitLayoutRegion; splitRatio: number; mode: SplitLayoutMode }
   onSplitLayoutRegionMove?: (x: number, y: number) => void
+  // Zoom/posição manual do vídeo principal — aproximação via CSS (scale +
+  // translate no próprio elemento <video>, recortado pelo overflow-hidden
+  // do container). O resultado exato só sai no render final do ffmpeg.
+  transform?: VideoTransform
 }
 
 const FONT_CSS_FAMILY: Record<FontFamilyId, string> = Object.fromEntries(
@@ -74,6 +78,7 @@ export function VideoPreviewPlayer({
   onOverlayMove,
   splitLayout,
   onSplitLayoutRegionMove,
+  transform,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -85,6 +90,13 @@ export function VideoPreviewPlayer({
   // cursor no instante do clique em vez de simplesmente se mover junto.
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null)
   const [draggingRegion, setDraggingRegion] = useState(false)
+  const [videoError, setVideoError] = useState('')
+
+  // Reseta o erro ao trocar de fonte (ex.: depois de "Aplicar edições", o
+  // template-output-editor troca a URL com um ?t= novo pra forçar recarregar).
+  useEffect(() => {
+    setVideoError('')
+  }, [videoSrc])
 
   useEffect(() => {
     const el = containerRef.current
@@ -227,7 +239,24 @@ export function VideoPreviewPlayer({
         ref={videoRef}
         src={videoSrc}
         className="w-full h-full object-contain bg-black"
+        style={
+          transform
+            ? { transform: `scale(${transform.zoom}) translate(${transform.positionX * (transform.zoom - 1) * 50}%, ${transform.positionY * (transform.zoom - 1) * 50}%)` }
+            : undefined
+        }
         onTimeUpdate={handleTimeUpdate}
+        onError={async () => {
+          // O <video> não expõe o corpo da resposta HTTP — refaz a mesma
+          // requisição só pra ler a mensagem de erro real da API (ex.:
+          // "Vídeo não encontrado") em vez de deixar tela preta sem explicação.
+          try {
+            const res = await fetch(videoSrc)
+            const body = await res.json().catch(() => null)
+            setVideoError(body?.error || `Não foi possível carregar o vídeo (HTTP ${res.status}).`)
+          } catch {
+            setVideoError('Não foi possível carregar o vídeo. Verifique sua conexão e tente recarregar a página.')
+          }
+        }}
         playsInline
       />
 
@@ -297,7 +326,12 @@ export function VideoPreviewPlayer({
         </div>
       )}
 
-      {!playing && (
+      {videoError ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 px-6 text-center">
+          <p className="text-sm font-medium text-red-400">Vídeo não carregou</p>
+          <p className="text-xs text-white/50">{videoError}</p>
+        </div>
+      ) : !playing && (
         <button
           onClick={() => onPlayingChange(true)}
           className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"

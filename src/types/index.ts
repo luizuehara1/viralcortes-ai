@@ -221,6 +221,19 @@ export const DEFAULT_SPLIT_RATIO_BY_MODE: Record<SplitLayoutMode, number> = {
   FACECAM_TOP_MAIN_BOTTOM: 0.45,
 }
 
+// Zoom/posição manual do vídeo principal dentro do quadro de saída — reaproveita
+// exatamente o "cover crop" que já existia (scale increase + crop centralizado),
+// só que com o alvo de scale multiplicado por zoom e o ponto do crop deslocado
+// por positionX/Y em vez de sempre centralizado. zoom=1,position=0,0 é
+// idêntico ao fitMode COVER de hoje (compatível com o que já existe).
+export interface VideoTransform {
+  zoom: number // >=1 — 1 = sem zoom extra
+  positionX: number // -1 a 1 — 0 = centralizado, -1 = extremo esquerdo, 1 = extremo direito
+  positionY: number // -1 a 1 — 0 = centralizado, -1 = topo, 1 = base
+}
+
+export const DEFAULT_VIDEO_TRANSFORM: VideoTransform = { zoom: 1, positionX: 0, positionY: 0 }
+
 export interface EditorState {
   textOverlays: TextOverlay[]
   captions: CaptionSegment[]
@@ -233,6 +246,7 @@ export interface EditorState {
   // já ter ligado uma vez, diferente de undefined = "nunca configurado").
   layoutMode?: SplitLayoutMode | null
   layoutConfig?: SplitLayoutConfig
+  transform?: VideoTransform
 }
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
