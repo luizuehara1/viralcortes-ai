@@ -2,11 +2,15 @@
 
 import { useState } from 'react'
 import {
-  LinkIcon, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ExternalLink,
+  LinkIcon, CheckCircle2, AlertTriangle, ExternalLink,
 } from 'lucide-react'
 import { formatDuration } from '@/lib/utils'
 import type { SourcePlatform } from '@/types'
 import { SOURCE_PLATFORM_LABELS } from '@/types'
+import { PlatformIconButton } from '@/components/ui/platform-icon'
+import { Button } from '@/components/ui/button'
+import { GlassCard } from '@/components/ui/glass-card'
+import { ErrorState } from '@/components/ui/error-state'
 
 interface Props {
   projectId: string
@@ -130,7 +134,7 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
         </p>
       </div>
 
-      <div className="glass rounded-2xl p-6 space-y-4">
+      <GlassCard className="p-6 space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <LinkIcon className="w-4 h-4 text-violet-400" />
           <label className="text-sm font-medium text-white/70">Link do vídeo ou live</label>
@@ -141,56 +145,37 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
             value={url}
             onChange={(e) => { setUrl(e.target.value); resetValidation() }}
             placeholder="https://www.youtube.com/watch?v=..."
-            className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-violet-500/50 transition-all"
+            className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
           />
-          <button
+          <Button
             onClick={validate}
-            disabled={!url.trim() || validating}
-            className="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 font-medium transition-all flex items-center gap-2 shrink-0"
+            disabled={!url.trim()}
+            loading={validating}
+            variant="secondary"
+            className="shrink-0"
           >
-            {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {validating ? 'Validando...' : 'Validar link'}
-          </button>
+          </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {PLATFORM_BADGES.map((p) => (
-            <span
-              key={p.platform}
-              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                validated?.platform === p.platform
-                  ? 'border-violet-500 bg-violet-500/20 text-violet-300'
-                  : 'border-white/10 text-white/30'
-              }`}
-            >
-              {p.label}
-            </span>
+            <PlatformIconButton key={p.platform} platform={p.platform} label={p.label} active={validated?.platform === p.platform} />
           ))}
         </div>
 
         {error && (
           <div className="space-y-2">
-            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
+            <ErrorState message={error} />
             {(errorCode === 'PLATFORM_BLOCKED_ACCESS' || errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES') && (
-              <button
-                onClick={importAnyway}
-                disabled={creating}
-                className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-all flex items-center justify-center gap-2"
-              >
-                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              <Button onClick={importAnyway} loading={creating} className="w-full">
                 {creating ? 'Enviando...' : 'Importar mesmo assim (via downloader local)'}
-              </button>
+              </Button>
             )}
             {(errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES' || errorCode === 'PLATFORM_BLOCKED_ACCESS') && onSwitchToUpload && (
-              <button
-                onClick={onSwitchToUpload}
-                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-              >
+              <Button onClick={onSwitchToUpload} variant="secondary" className="w-full">
                 Enviar vídeo do PC
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -226,17 +211,12 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
               </div>
             )}
 
-            <button
-              onClick={createAndImport}
-              disabled={creating}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            <Button onClick={createAndImport} loading={creating} className="w-full" size="lg">
               {creating ? 'Importando...' : 'Criar projeto e importar vídeo'}
-            </button>
+            </Button>
           </div>
         )}
-      </div>
+      </GlassCard>
     </div>
   )
 }

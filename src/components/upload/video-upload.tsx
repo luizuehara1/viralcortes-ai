@@ -3,9 +3,12 @@
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import {
-  Upload, Film, Loader2, CheckCircle2, AlertCircle, X
+  Upload, Film, CheckCircle2, X
 } from 'lucide-react'
 import { formatFileSize } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { GlassCard } from '@/components/ui/glass-card'
+import { ErrorState } from '@/components/ui/error-state'
 
 interface Props {
   projectId: string
@@ -96,11 +99,13 @@ export function VideoUpload({ projectId, onSuccess }: Props) {
 
   if (done) {
     return (
-      <div className="glass rounded-2xl p-12 text-center">
-        <CheckCircle2 className="w-14 h-14 text-green-400 mx-auto mb-4" />
+      <GlassCard className="p-12 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-green-500/15 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 className="w-8 h-8 text-green-400" />
+        </div>
         <h3 className="text-xl font-semibold mb-2">Upload concluído!</h3>
         <p className="text-white/40 text-sm">Redirecionando para o processamento...</p>
-      </div>
+      </GlassCard>
     )
   }
 
@@ -135,7 +140,7 @@ export function VideoUpload({ projectId, onSuccess }: Props) {
           </p>
         </div>
       ) : (
-        <div className="glass rounded-2xl p-6">
+        <GlassCard className="p-6">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
               <Film className="w-6 h-6 text-violet-400" />
@@ -154,12 +159,7 @@ export function VideoUpload({ projectId, onSuccess }: Props) {
             )}
           </div>
 
-          {error && (
-            <div className="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
+          {error && <div className="mb-4"><ErrorState message={error} /></div>}
 
           {uploading && (
             <div className="mb-6">
@@ -179,15 +179,10 @@ export function VideoUpload({ projectId, onSuccess }: Props) {
             </div>
           )}
 
-          <button
-            onClick={upload}
-            disabled={uploading}
-            className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all flex items-center justify-center gap-2"
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+          <Button onClick={upload} loading={uploading} icon={<Upload className="w-4 h-4" />} className="w-full" size="lg">
             {uploading ? `Enviando... ${progress}%` : 'Enviar e analisar'}
-          </button>
-        </div>
+          </Button>
+        </GlassCard>
       )}
     </div>
   )
