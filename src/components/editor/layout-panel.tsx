@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Sparkles, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, Eye } from 'lucide-react'
 import {
   SPLIT_LAYOUT_LABELS, DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE,
   type SplitLayoutMode, type SplitLayoutConfig,
@@ -11,6 +11,11 @@ interface Props {
   layoutMode: SplitLayoutMode | null | undefined
   layoutConfig: SplitLayoutConfig | undefined
   detectEndpoint: string
+  // "Testar recorte da facecam" — extrai um frame real já cropado pela
+  // região atual, pra conferir visualmente ANTES de renderizar o vídeo
+  // inteiro (achou um caso real onde a detecção automática errou a região
+  // e só se percebia depois do render inteiro terminar).
+  previewEndpoint: string
   onChange: (layoutMode: SplitLayoutMode | null, layoutConfig: SplitLayoutConfig | undefined) => void
   // Último ajuste salvo do usuário (User.lastSplitLayoutConfig) — usado como
   // ponto de partida ao escolher um layout pela primeira vez neste clipe,
@@ -20,9 +25,12 @@ interface Props {
 
 const MODES: SplitLayoutMode[] = ['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']
 
-export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange, lastUsedConfig }: Props) {
+export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewEndpoint, onChange, lastUsedConfig }: Props) {
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState('')
+  const [previewing, setPreviewing] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [previewUrl, setPreviewUrl] = useState('')
 
   const config = layoutConfig ?? lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG
 
@@ -95,6 +103,26 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
       setDetectError(err.message || 'Falha ao detectar a facecam')
     } finally {
       setDetecting(false)
+    }
+  }
+
+  const testFacecamCrop = async () => {
+    setPreviewing(true)
+    setPreviewError('')
+    setPreviewUrl('')
+    try {
+      const res = await fetch(previewEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config.facecamRegion),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Falha ao gerar o preview')
+      setPreviewUrl(body.previewDataUrl)
+    } catch (err: any) {
+      setPreviewError(err.message || 'Falha ao gerar o preview')
+    } finally {
+      setPreviewing(false)
     }
   }
 
@@ -201,6 +229,23 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
             min={0.3} max={0.7} step={0.01}
             onChange={(v) => updateConfig({ splitRatio: v })}
           />
+
+          <button
+            onClick={testFacecamCrop}
+            disabled={previewing}
+            className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-sm font-medium transition-all flex items-center justify-center gap-2"
+          >
+            {previewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+            {previewing ? 'Gerando preview...' : 'Testar recorte da facecam'}
+          </button>
+          {previewError && <p className="text-xs text-red-400">{previewError}</p>}
+          {previewUrl && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-white/40">É isso que vai aparecer no painel da facecam (antes do zoom):</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewUrl} alt="Preview do recorte da facecam" className="w-full rounded-lg border border-white/10" />
+            </div>
+          )}
         </div>
       )}
     </div>

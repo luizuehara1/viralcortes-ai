@@ -120,6 +120,38 @@ export function cropVideoRegion(videoPath: string, outputPath: string, region: C
   })
 }
 
+// Extrai UM frame (perto do meio do corte, mais chance de estar "no ar" que
+// o frame 0) já cropado pela facecamRegion (0-1 normalizado) — usado pelo
+// botão "Testar recorte da facecam" no editor, pra confirmar visualmente
+// que a região está certa ANTES de rodar o render inteiro (que só se nota
+// o erro depois de esperar o vídeo inteiro processar).
+export async function previewFacecamCrop(
+  videoPath: string,
+  region: { x: number; y: number; width: number; height: number },
+  atSeconds: number,
+  outputPath: string
+): Promise<void> {
+  const meta = await getVideoMetadata(videoPath)
+  const srcW = meta.width || 1920
+  const srcH = meta.height || 1080
+  const w = Math.max(2, Math.floor((region.width * srcW) / 2) * 2)
+  const h = Math.max(2, Math.floor((region.height * srcH) / 2) * 2)
+  const x = Math.min(srcW - w, Math.max(0, Math.round(region.x * srcW)))
+  const y = Math.min(srcH - h, Math.max(0, Math.round(region.y * srcH)))
+
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+    ffmpeg(videoPath)
+      .seekInput(Math.max(0, atSeconds))
+      .outputOptions(['-frames:v', '1', '-q:v', '3', '-update', '1'])
+      .videoFilter(`crop=${w}:${h}:${x}:${y}`)
+      .output(outputPath)
+      .on('end', () => resolve())
+      .on('error', reject)
+      .run()
+  })
+}
+
 const DEFAULT_FFMPEG_TIMEOUT_MS = 15 * 60 * 1000 // 15min — audio-only encode, generous safety margin
 
 // Shared hardened runner for audio extraction: validates the input exists,
@@ -286,6 +318,33 @@ function buildSplitLayoutFilters(
   srcW: number,
   srcH: number
 ): ffmpeg.FilterSpecification[] {
+  // Validação antes de montar o filtro — uma facecamRegion ausente/zerada/
+  // fora dos limites do vídeo fonte gera um crop degenerado (ou o ffmpeg
+  // clampeando pra algo sem sentido) em vez de um erro claro. Visto na
+  // prática: uma detecção automática errada não é pega por nenhuma
+  // validação, só produz um recorte visualmente errado sem avisar.
+  const r = config.facecamRegion
+  const regionValid =
+    r && Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.width) && Number.isFinite(r.height) &&
+    r.width > 0 && r.height > 0 &&
+    r.x >= 0 && r.y >= 0 && r.x + r.width <= 1.001 && r.y + r.height <= 1.001
+  if (!regionValid) {
+    throw new Error('Área da facecam inválida. Ajuste manualmente a região da câmera.')
+  }
+
+  // Log seguro (sem secrets) pra depurar esse tipo de caso sem precisar
+  // consultar o banco toda vez — só dimensões/configuração, nunca tokens.
+  console.log('[ffmpeg] layout split-screen:', JSON.stringify({
+    layoutMode: mode,
+    videoWidth: srcW,
+    videoHeight: srcH,
+    canvasWidth: canvasW,
+    canvasHeight: canvasH,
+    facecamRegion: config.facecamRegion,
+    facecamZoom: config.facecamZoom,
+    splitRatio: config.splitRatio,
+  }))
+
   const OUTPUT_FPS = 30
   // Par por construção: floor(par/2)*2 já é par, e a subtração de dois
   // pares sempre dá par — garante que os dois painéis somam exatamente
@@ -309,6 +368,11 @@ function buildSplitLayoutFilters(
   const isFacecamTop = mode === 'FACECAM_TOP_MAIN_BOTTOM'
   const mainPanelHeight = isFacecamTop ? bottomHeight : topHeight
   const facecamPanelHeight = isFacecamTop ? topHeight : bottomHeight
+
+  console.log('[ffmpeg] layout split-screen — crop calculado (pixels no vídeo fonte):', JSON.stringify({
+    facecamCropPx: { x: cropX, y: cropY, width: cropW, height: cropH },
+    topHeight, bottomHeight, isFacecamTop,
+  }))
 
   const filters: ffmpeg.FilterSpecification[] = [
     { filter: 'fps', options: `fps=${OUTPUT_FPS}`, inputs: '0:v', outputs: 'v30' },

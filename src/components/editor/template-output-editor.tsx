@@ -236,6 +236,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
               layoutConfig={editorState.layoutConfig}
               lastUsedConfig={lastSplitLayoutConfig}
               detectEndpoint={`/api/template-outputs/${output.id}/detect-facecam`}
+              previewEndpoint={`/api/template-outputs/${output.id}/facecam-preview`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}

@@ -242,6 +242,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
               layoutConfig={editorState.layoutConfig}
               lastUsedConfig={lastSplitLayoutConfig}
               detectEndpoint={`/api/clips/${clip.id}/detect-facecam`}
+              previewEndpoint={`/api/clips/${clip.id}/facecam-preview`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}
