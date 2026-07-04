@@ -21,6 +21,7 @@ export function mergeEditorState(existing: unknown, updates: Partial<EditorState
     layoutConfig: updates.layoutConfig ?? base.layoutConfig,
     transform: updates.transform ?? base.transform,
     layers: updates.layers ?? base.layers,
+    canvas: updates.canvas ?? base.canvas,
   }
 }
 

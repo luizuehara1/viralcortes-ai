@@ -10,9 +10,11 @@ import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { PropertiesPanel } from './properties-panel'
 import { EditorToolRail } from './editor-tool-rail'
+import { CanvasFormatSelector } from './canvas-format-selector'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
 import type { EditorState, SplitLayoutConfig, EditorLayer } from '@/types'
+import { DEFAULT_EDITOR_CANVAS } from '@/types'
 
 interface Props {
   output: { id: string; duration: number; caption: string | null }
@@ -119,6 +121,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <CanvasFormatSelector canvas={editorState.canvas} onChange={(canvas) => setEditorState((s) => ({ ...s, canvas }))} />
           <span className="text-xs text-white/30 w-14">
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
@@ -164,6 +167,11 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
         <VideoEditorCanvas
           duration={duration}
           onSeek={seekTo}
+          aspectRatio={
+            editorState.canvas && editorState.canvas.width > 0 && editorState.canvas.height > 0
+              ? `${editorState.canvas.width} / ${editorState.canvas.height}`
+              : `${DEFAULT_EDITOR_CANVAS.width} / ${DEFAULT_EDITOR_CANVAS.height}`
+          }
           videoSrc={`/api/template-outputs/${output.id}/stream${appliedAt ? `?t=${appliedAt}` : ''}`}
           clipStart={0}
           clipEnd={duration}
@@ -241,6 +249,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
               lastUsedConfig={lastSplitLayoutConfig}
               detectEndpoint={`/api/template-outputs/${output.id}/detect-facecam`}
               previewEndpoint={`/api/template-outputs/${output.id}/facecam-preview`}
+              layoutPreviewEndpoint={`/api/template-outputs/${output.id}/preview-layout`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}

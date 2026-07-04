@@ -292,6 +292,46 @@ export interface EditorLayer {
   transform: LayerTransform
 }
 
+// Formato/resolução de saída escolhido no editor — nomes amigáveis (preset)
+// em cima do MESMO ClipFormat que o render já usa (FORMAT_DIMENSIONS em
+// ffmpeg.ts), então não precisa de nenhum código novo de render: só uma
+// tradução preset -> ClipFormat na hora de gerar/exportar.
+export type CanvasPreset = 'TIKTOK_9_16' | 'YOUTUBE_16_9' | 'SQUARE_1_1' | 'FEED_4_5' | 'ORIGINAL'
+
+export interface EditorCanvas {
+  preset: CanvasPreset
+  width: number // 0 pra ORIGINAL — resolvido a partir do vídeo fonte na hora do render
+  height: number
+  aspectRatio: string
+}
+
+export const CANVAS_PRESETS: Record<CanvasPreset, EditorCanvas> = {
+  TIKTOK_9_16: { preset: 'TIKTOK_9_16', width: 1080, height: 1920, aspectRatio: '9:16' },
+  YOUTUBE_16_9: { preset: 'YOUTUBE_16_9', width: 1920, height: 1080, aspectRatio: '16:9' },
+  SQUARE_1_1: { preset: 'SQUARE_1_1', width: 1080, height: 1080, aspectRatio: '1:1' },
+  FEED_4_5: { preset: 'FEED_4_5', width: 1080, height: 1350, aspectRatio: '4:5' },
+  ORIGINAL: { preset: 'ORIGINAL', width: 0, height: 0, aspectRatio: 'original' },
+}
+
+export const CANVAS_PRESET_LABELS: Record<CanvasPreset, string> = {
+  TIKTOK_9_16: 'TikTok / Reels / Shorts — 9:16',
+  YOUTUBE_16_9: 'YouTube — 16:9',
+  SQUARE_1_1: 'Feed Quadrado — 1:1',
+  FEED_4_5: 'Feed Vertical — 4:5',
+  ORIGINAL: 'Original — manter resolução',
+}
+
+export const CANVAS_PRESET_TO_CLIP_FORMAT: Record<CanvasPreset, ClipFormat> = {
+  TIKTOK_9_16: 'VERTICAL_9_16',
+  YOUTUBE_16_9: 'HORIZONTAL_16_9',
+  SQUARE_1_1: 'SQUARE_1_1',
+  FEED_4_5: 'FEED_4_5',
+  ORIGINAL: 'ORIGINAL',
+}
+
+// Padrão do editor: TikTok/Reels/Shorts 9:16, conforme pedido explícito.
+export const DEFAULT_EDITOR_CANVAS: EditorCanvas = CANVAS_PRESETS.TIKTOK_9_16
+
 export interface EditorState {
   textOverlays: TextOverlay[]
   captions: CaptionSegment[]
@@ -312,6 +352,9 @@ export interface EditorState {
   // Estado de seleção da UI — não entra no schema zod/autosave por ora
   // (com uma única camada não há o que persistir de seleção entre reloads).
   selectedLayerId?: string | null
+  // Formato/resolução de saída — ausente = usa DEFAULT_EDITOR_CANVAS (TikTok
+  // 9:16) tanto pro preview quanto pro render.
+  canvas?: EditorCanvas
 }
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {

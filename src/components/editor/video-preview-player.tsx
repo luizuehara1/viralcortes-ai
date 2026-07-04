@@ -21,6 +21,10 @@ interface Props {
   videoSrc: string
   clipStart: number
   clipEnd: number
+  // Formato CSS (ex.: '9 / 16') do canvas de saída escolhido — o preview
+  // muda de proporção junto com o formato selecionado. Default '9 / 16'
+  // (TikTok/Reels/Shorts) se não informado.
+  aspectRatio?: string
   playing: boolean
   onPlayingChange: (playing: boolean) => void
   seekRequest: SeekRequest | null
@@ -94,6 +98,7 @@ export function VideoPreviewPlayer({
   selectedLayerId,
   onSelectLayer,
   onLayerTransformChange,
+  aspectRatio = '9 / 16',
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -333,7 +338,7 @@ export function VideoPreviewPlayer({
       <div
         ref={containerRef}
         className="relative w-full bg-black rounded-2xl overflow-hidden"
-        style={{ aspectRatio: '9 / 16', maxHeight: 640 }}
+        style={{ aspectRatio, maxHeight: 640 }}
       >
       <video
         ref={videoRef}

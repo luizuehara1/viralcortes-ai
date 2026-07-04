@@ -11,6 +11,10 @@ interface Props {
   onClose: () => void
   onConfirm: (format: ClipFormat, fitMode: FitMode, layoutMode?: SplitLayoutMode | null) => void
   submitting: boolean
+  // Pré-seleciona o formato escolhido no seletor "Formato de saída" do
+  // editor (editorState.canvas) — só passado quando o modal abre a partir
+  // de um editor já com um canvas escolhido, não no fluxo de geração em lote.
+  defaultFormat?: ClipFormat
 }
 
 // Template personalizado fica para uma segunda etapa — só os 5 formatos
@@ -23,11 +27,21 @@ const FORMAT_ASPECT: Record<ClipFormat, string> = {
   SQUARE_1_1: '1 / 1',
   FEED_4_5: '4 / 5',
 }
+// Espelha FORMAT_DIMENSIONS de src/lib/ffmpeg.ts — só pra mostrar a
+// resolução final na confirmação (null = ORIGINAL, resolvido a partir do
+// vídeo fonte só na hora do render).
+const FORMAT_DIMENSIONS_DISPLAY: Record<ClipFormat, { width: number; height: number } | null> = {
+  ORIGINAL: null,
+  VERTICAL_9_16: { width: 1080, height: 1920 },
+  SQUARE_1_1: { width: 1080, height: 1080 },
+  HORIZONTAL_16_9: { width: 1920, height: 1080 },
+  FEED_4_5: { width: 1080, height: 1350 },
+}
 const FIT_MODES: FitMode[] = ['CONTAIN', 'COVER', 'BLUR_BACKGROUND']
 const SPLIT_LAYOUT_MODES: SplitLayoutMode[] = ['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']
 
-export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
-  const [format, setFormat] = useState<ClipFormat>('ORIGINAL')
+export function FormatPickerModal({ onClose, onConfirm, submitting, defaultFormat }: Props) {
+  const [format, setFormat] = useState<ClipFormat>(defaultFormat ?? 'ORIGINAL')
   const [fitMode, setFitMode] = useState<FitMode>('CONTAIN')
   // Layout com facecam é uma alternativa ao fitMode normal, só faz sentido
   // pra formato vertical — posição padrão de facecam (sem detecção
@@ -116,11 +130,20 @@ export function FormatPickerModal({ onClose, onConfirm, submitting }: Props) {
 
         <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-white/3 text-xs text-white/40">
           <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-green-400/70" />
-          <span>Áudio original mantido · 30 FPS constante · sem legendas ou textos automáticos</span>
+          <span>
+            {FORMAT_DIMENSIONS_DISPLAY[format]
+              ? `Este vídeo será exportado em ${FORMAT_DIMENSIONS_DISPLAY[format]!.width}x${FORMAT_DIMENSIONS_DISPLAY[format]!.height} — ${CLIP_FORMAT_LABELS[format]}`
+              : 'Mantém a resolução original do vídeo fonte'}
+            {' · Áudio original mantido · 30 FPS constante'}
+          </span>
         </div>
 
         <Button onClick={() => onConfirm(format, fitMode, layoutMode)} loading={submitting} icon={<Wand2 className="w-4 h-4" />} className="w-full" size="lg">
-          {submitting ? 'Enfileirando...' : 'Gerar corte'}
+          {submitting
+            ? 'Enfileirando...'
+            : FORMAT_DIMENSIONS_DISPLAY[format]
+              ? `Exportar em ${FORMAT_DIMENSIONS_DISPLAY[format]!.width}x${FORMAT_DIMENSIONS_DISPLAY[format]!.height}`
+              : 'Gerar corte'}
         </Button>
     </Modal>
   )

@@ -152,6 +152,38 @@ export async function previewFacecamCrop(
   })
 }
 
+// Extrai UM frame já com o layout split-screen (facecam+principal) REAL
+// aplicado — reaproveita buildSplitLayoutFilters, o MESMO grafo de filtro
+// usado no render final, então isso não é uma aproximação visual: é
+// pixel-a-pixel o que vai sair no vídeo renderizado (só que 1 frame em vez
+// do vídeo inteiro). Usado pelo botão "Ver layout completo" no editor —
+// antes só existia o preview isolado da facecam (previewFacecamCrop), sem
+// nada mostrando os dois painéis já compostos juntos.
+export async function previewSplitLayoutFrame(
+  videoPath: string,
+  mode: SplitLayoutMode,
+  config: SplitLayoutConfig,
+  canvasW: number,
+  canvasH: number,
+  atSeconds: number,
+  outputPath: string
+): Promise<void> {
+  const srcMeta = await getVideoMetadata(videoPath)
+  const filters = buildSplitLayoutFilters(mode, config, canvasW, canvasH, srcMeta.width || canvasW, srcMeta.height || canvasH)
+
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+    ffmpeg(videoPath)
+      .seekInput(Math.max(0, atSeconds))
+      .complexFilter(filters, 'outv')
+      .outputOptions(['-frames:v', '1', '-q:v', '3', '-update', '1'])
+      .output(outputPath)
+      .on('end', () => resolve())
+      .on('error', reject)
+      .run()
+  })
+}
+
 const DEFAULT_FFMPEG_TIMEOUT_MS = 15 * 60 * 1000 // 15min — audio-only encode, generous safety margin
 
 // Shared hardened runner for audio extraction: validates the input exists,

@@ -6,18 +6,19 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { renderClip } from '@/lib/ffmpeg'
 import { getUploadDir } from '@/lib/utils'
-import type { EditorState } from '@/types'
+import { CANVAS_PRESET_TO_CLIP_FORMAT, type EditorState } from '@/types'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
 // POST /api/template-outputs/:id/render -> queima os overlays/legendas/
 // efeitos do editorState no arquivo (renderClip com startTime=0, duration
-// cheia, format=ORIGINAL — o resultado do template já está no tamanho certo
-// do template, não precisa recortar nem redimensionar). Diferente do render
-// de clipe, aqui não existem múltiplos formatos/RenderedClip: o próprio
-// TemplateOutput.filePath é atualizado para a versão editada, síncrono
-// (mesmo padrão de /api/template/generate, que também é síncrono).
+// cheia). Formato de saída vem de editorState.canvas (seletor "Formato de
+// saída" no editor) — ausente/nunca escolhido mantém o comportamento de
+// sempre (ORIGINAL, já que o resultado do template normalmente já está no
+// tamanho certo). Diferente do render de clipe, aqui não existem múltiplos
+// formatos/RenderedClip: o próprio TemplateOutput.filePath é atualizado
+// para a versão editada, síncrono (mesmo padrão de /api/template/generate).
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -40,13 +41,16 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   fs.mkdirSync(outputDir, { recursive: true })
   const newPath = path.join(outputDir, `edited-${output.id}-${Date.now()}.mp4`)
 
+  const format = editorState?.canvas ? CANVAS_PRESET_TO_CLIP_FORMAT[editorState.canvas.preset] : 'ORIGINAL'
+
   try {
     await renderClip({
       inputPath: output.filePath,
       outputPath: newPath,
       startTime: 0,
       duration: output.duration,
-      format: 'ORIGINAL',
+      format,
+      fitMode: format === 'ORIGINAL' ? undefined : 'CONTAIN',
       exportMode: 'clean',
       editorOverlays: editorState?.textOverlays,
       editorCaptions: editorState?.captions,

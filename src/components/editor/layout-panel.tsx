@@ -16,6 +16,11 @@ interface Props {
   // inteiro (achou um caso real onde a detecção automática errou a região
   // e só se percebia depois do render inteiro terminar).
   previewEndpoint: string
+  // "Ver layout completo" — mostra os DOIS painéis (facecam + principal)
+  // já compostos de verdade (mesmo filtro do render final, não uma
+  // aproximação) — antes só existia o preview isolado da facecam, então
+  // detectar/ajustar nunca mostrava o resultado final real no editor.
+  layoutPreviewEndpoint: string
   onChange: (layoutMode: SplitLayoutMode | null, layoutConfig: SplitLayoutConfig | undefined) => void
   // Último ajuste salvo do usuário (User.lastSplitLayoutConfig) — usado como
   // ponto de partida ao escolher um layout pela primeira vez neste clipe,
@@ -25,14 +30,39 @@ interface Props {
 
 const MODES: SplitLayoutMode[] = ['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']
 
-export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewEndpoint, onChange, lastUsedConfig }: Props) {
+export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewEndpoint, layoutPreviewEndpoint, onChange, lastUsedConfig }: Props) {
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState('')
   const [previewing, setPreviewing] = useState(false)
   const [previewError, setPreviewError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
+  const [layoutPreviewing, setLayoutPreviewing] = useState(false)
+  const [layoutPreviewError, setLayoutPreviewError] = useState('')
+  const [layoutPreviewUrl, setLayoutPreviewUrl] = useState('')
 
   const config = layoutConfig ?? lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG
+
+  // Gera o preview do layout completo (os dois painéis já compostos) — chamado
+  // automaticamente depois de uma detecção (manual ou automática ao escolher
+  // o modo) bem-sucedida, além de poder ser clicado a qualquer momento.
+  const refreshLayoutPreview = async (mode: SplitLayoutMode, cfg: SplitLayoutConfig) => {
+    setLayoutPreviewing(true)
+    setLayoutPreviewError('')
+    try {
+      const res = await fetch(layoutPreviewEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layoutMode: mode, layoutConfig: cfg }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Falha ao gerar o preview do layout')
+      setLayoutPreviewUrl(body.previewDataUrl)
+    } catch (err: any) {
+      setLayoutPreviewError(err.message || 'Falha ao gerar o preview do layout')
+    } finally {
+      setLayoutPreviewing(false)
+    }
+  }
 
   // Escolher um modo pela primeira vez (sem layoutConfig ainda) já tenta
   // detectar a facecam de verdade — antes isso só acontecia se o usuário
@@ -52,7 +82,9 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
     const base = { ...(lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[mode] }
     if (lastUsedConfig) {
       // já tem um ajuste salvo do usuário — reaproveita em vez de detectar de novo.
-      onChange(mode, { ...base, facecamConfirmed: true })
+      const confirmedCfg = { ...base, facecamConfirmed: true }
+      onChange(mode, confirmedCfg)
+      refreshLayoutPreview(mode, confirmedCfg)
       return
     }
     onChange(mode, base)
@@ -62,10 +94,20 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
       const res = await fetch(detectEndpoint, { method: 'POST' })
       const body = await res.json().catch(() => null)
       if (res.ok && body?.detected && body.region) {
-        onChange(mode, { ...base, facecamRegion: body.region, facecamConfirmed: true })
+        const detectedCfg = { ...base, facecamRegion: body.region, facecamConfirmed: true }
+        onChange(mode, detectedCfg)
+        // Mostra o resultado real já composto assim que detecta — é
+        // exatamente o pedido de "ao clicar detectar, o vídeo já deve
+        // mudar pro formato final", em vez de só atualizar dados sem
+        // nenhuma confirmação visual do resultado.
+        refreshLayoutPreview(mode, detectedCfg)
       } else {
         setDetectError('Facecam não detectada automaticamente. Ajuste manualmente a área.')
-        onChange(mode, { ...base, facecamConfirmed: false })
+        const fallbackCfg = { ...base, facecamConfirmed: false }
+        onChange(mode, fallbackCfg)
+        // Mostra o resultado (provavelmente errado) mesmo no fallback —
+        // ajuda o usuário a VER que precisa ajustar, não só ler um aviso.
+        refreshLayoutPreview(mode, fallbackCfg)
       }
     } catch {
       onChange(mode, { ...base, facecamConfirmed: false })
@@ -95,10 +137,18 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
       if (!res.ok) throw new Error(body?.error || 'Falha ao detectar a facecam')
       if (!body.detected) {
         setDetectError('Facecam não detectada automaticamente. Ajuste manualmente a área.')
-        if (layoutMode) onChange(layoutMode, { ...config, facecamConfirmed: false })
+        if (layoutMode) {
+          const fallbackCfg = { ...config, facecamConfirmed: false }
+          onChange(layoutMode, fallbackCfg)
+          refreshLayoutPreview(layoutMode, fallbackCfg)
+        }
         return
       }
-      if (layoutMode) onChange(layoutMode, { ...config, facecamRegion: body.region, facecamConfirmed: true })
+      if (layoutMode) {
+        const detectedCfg = { ...config, facecamRegion: body.region, facecamConfirmed: true }
+        onChange(layoutMode, detectedCfg)
+        refreshLayoutPreview(layoutMode, detectedCfg)
+      }
     } catch (err: any) {
       setDetectError(err.message || 'Falha ao detectar a facecam')
     } finally {
@@ -175,6 +225,25 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
             {detecting ? 'Detectando...' : 'Detectar automaticamente'}
           </button>
           {detectError && <p className="text-xs text-amber-400">{detectError}</p>}
+
+          <div className="space-y-1.5">
+            <button
+              onClick={() => layoutMode && refreshLayoutPreview(layoutMode, config)}
+              disabled={layoutPreviewing || !layoutMode}
+              className="w-full py-2.5 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 disabled:opacity-50 text-sm font-medium text-violet-200 transition-all flex items-center justify-center gap-2"
+            >
+              {layoutPreviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+              {layoutPreviewing ? 'Montando layout...' : 'Ver layout completo'}
+            </button>
+            {layoutPreviewError && <p className="text-xs text-red-400">{layoutPreviewError}</p>}
+            {layoutPreviewUrl && (
+              <div className="space-y-1">
+                <p className="text-xs text-white/40">Resultado real (mesmo filtro do render final, 1080x1920):</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={layoutPreviewUrl} alt="Preview do layout completo" className="w-full max-w-[220px] mx-auto rounded-lg border border-white/10" />
+              </div>
+            )}
+          </div>
 
           <p className="text-xs text-white/30">Arraste o retângulo no preview pra reposicionar a facecam, ou ajuste os campos abaixo.</p>
 

@@ -11,10 +11,11 @@ import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { PropertiesPanel } from './properties-panel'
 import { EditorToolRail } from './editor-tool-rail'
+import { CanvasFormatSelector } from './canvas-format-selector'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
 import { Button } from '@/components/ui/button'
 import type { EditorState, ClipFormat, FitMode, SplitLayoutMode, SplitLayoutConfig, EditorLayer } from '@/types'
-import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
+import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE, DEFAULT_EDITOR_CANVAS, CANVAS_PRESET_TO_CLIP_FORMAT } from '@/types'
 
 interface Props {
   clip: { id: string; title: string; startTime: number; endTime: number }
@@ -145,6 +146,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <CanvasFormatSelector canvas={editorState.canvas} onChange={(canvas) => setEditorState((s) => ({ ...s, canvas }))} />
           <span className="text-xs text-white/30 w-14 flex items-center gap-1">
             {saveState === 'saving' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
             {saveState === 'saved' && <span className="w-1.5 h-1.5 rounded-full bg-neon-500" />}
@@ -172,6 +174,11 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
         <VideoEditorCanvas
           duration={duration}
           onSeek={seekTo}
+          aspectRatio={
+            editorState.canvas && editorState.canvas.width > 0 && editorState.canvas.height > 0
+              ? `${editorState.canvas.width} / ${editorState.canvas.height}`
+              : `${DEFAULT_EDITOR_CANVAS.width} / ${DEFAULT_EDITOR_CANVAS.height}`
+          }
           videoSrc={`/api/videos/${sourceVideoId}/stream`}
           clipStart={clip.startTime}
           clipEnd={clip.endTime}
@@ -249,6 +256,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
               lastUsedConfig={lastSplitLayoutConfig}
               detectEndpoint={`/api/clips/${clip.id}/detect-facecam`}
               previewEndpoint={`/api/clips/${clip.id}/facecam-preview`}
+              layoutPreviewEndpoint={`/api/clips/${clip.id}/preview-layout`}
               onChange={(layoutMode, layoutConfig) => setEditorState((s) => ({ ...s, layoutMode, layoutConfig }))}
             />
           )}
@@ -265,7 +273,12 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
       </div>
 
       {pickerOpen && (
-        <FormatPickerModal submitting={rendering} onClose={() => setPickerOpen(false)} onConfirm={requestRender} />
+        <FormatPickerModal
+          submitting={rendering}
+          onClose={() => setPickerOpen(false)}
+          onConfirm={requestRender}
+          defaultFormat={CANVAS_PRESET_TO_CLIP_FORMAT[(editorState.canvas ?? DEFAULT_EDITOR_CANVAS).preset]}
+        />
       )}
     </div>
   )

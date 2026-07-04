@@ -132,6 +132,13 @@ const editorLayerSchema = z.object({
   transform: layerTransformSchema,
 })
 
+const canvasSchema = z.object({
+  preset: z.enum(['TIKTOK_9_16', 'YOUTUBE_16_9', 'SQUARE_1_1', 'FEED_4_5', 'ORIGINAL']),
+  width: z.number().min(0),
+  height: z.number().min(0),
+  aspectRatio: z.string(),
+})
+
 const patchSchema = z.object({
   textOverlays: z.array(textOverlaySchema).optional(),
   captions: z.array(captionSegmentSchema).optional(),
@@ -141,6 +148,7 @@ const patchSchema = z.object({
   layoutConfig: splitLayoutConfigSchema.optional(),
   transform: videoTransformSchema.optional(),
   layers: z.array(editorLayerSchema).optional(),
+  canvas: canvasSchema.optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
