@@ -26,7 +26,13 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
 
   const config = layoutConfig ?? lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG
 
-  const selectMode = (mode: SplitLayoutMode | null) => {
+  // Escolher um modo pela primeira vez (sem layoutConfig ainda) já tenta
+  // detectar a facecam de verdade — antes isso só acontecia se o usuário
+  // escolhesse o layout pelo modal de "gerar corte"; escolhendo direto aqui
+  // (único jeito de configurar layout num resultado de Template Studio,
+  // que não passa pelo modal) a facecam ficava sempre na posição padrão,
+  // sem aviso nenhum (bug real encontrado num TemplateOutput de teste).
+  const selectMode = async (mode: SplitLayoutMode | null) => {
     if (mode === null) {
       onChange(null, layoutConfig)
       return
@@ -35,7 +41,29 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
       onChange(mode, layoutConfig)
       return
     }
-    onChange(mode, { ...(lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[mode] })
+    const base = { ...(lastUsedConfig ?? DEFAULT_SPLIT_LAYOUT_CONFIG), splitRatio: DEFAULT_SPLIT_RATIO_BY_MODE[mode] }
+    if (lastUsedConfig) {
+      // já tem um ajuste salvo do usuário — reaproveita em vez de detectar de novo.
+      onChange(mode, { ...base, facecamConfirmed: true })
+      return
+    }
+    onChange(mode, base)
+    setDetecting(true)
+    setDetectError('')
+    try {
+      const res = await fetch(detectEndpoint, { method: 'POST' })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.detected && body.region) {
+        onChange(mode, { ...base, facecamRegion: body.region, facecamConfirmed: true })
+      } else {
+        setDetectError('Facecam não detectada automaticamente. Ajuste manualmente a área.')
+        onChange(mode, { ...base, facecamConfirmed: false })
+      }
+    } catch {
+      onChange(mode, { ...base, facecamConfirmed: false })
+    } finally {
+      setDetecting(false)
+    }
   }
 
   // Qualquer edição manual (arrastar, digitar nos campos, mexer no zoom) já
@@ -70,7 +98,11 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, onChange
     }
   }
 
-  const showFallbackWarning = !!layoutMode && layoutConfig?.facecamConfirmed === false
+  // Trata "nunca confirmado" (undefined — registros antigos de antes desse
+  // campo existir, ou o próprio instante logo após escolher o modo) igual a
+  // "detecção falhou" (false) — comparar só com `=== false` deixava
+  // registros antigos sem aviso nenhum, mesmo usando a posição padrão.
+  const showFallbackWarning = !!layoutMode && !layoutConfig?.facecamConfirmed
 
   const pct = (n: number) => Math.round(n * 100)
 
