@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { Toaster } from 'sonner'
 import './globals.css'
 import { Providers } from './providers'
 
@@ -23,6 +24,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className="dark">
       <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
+        <Toaster
+          theme="dark"
+          position="top-right"
+          toastOptions={{
+            classNames: {
+              toast: 'glass !border-white/10 !text-white',
+              title: '!text-white',
+              description: '!text-white/50',
+            },
+          }}
+        />
       </body>
     </html>
   )

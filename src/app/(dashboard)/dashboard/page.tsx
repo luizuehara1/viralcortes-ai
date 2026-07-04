@@ -3,15 +3,20 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import {
-  Plus, FolderOpen, TrendingUp, Scissors, Clock, ArrowRight
+  Plus, FolderOpen, Scissors, Clock, ArrowRight, Upload, CalendarClock, Link2,
 } from 'lucide-react'
 import { formatDuration } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { StatCard } from '@/components/ui/stat-card'
+import { GlassCard } from '@/components/ui/glass-card'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
   const userId = (session?.user as any)?.id
 
-  const [projects, totalClips, recentVideos] = await Promise.all([
+  const [projects, totalClips, recentVideos, totalVideos, scheduledCount, connectedAccounts] = await Promise.all([
     prisma.project.findMany({
       where: { userId },
       include: {
@@ -29,61 +34,58 @@ export default async function DashboardPage() {
       where: { sourceVideo: { project: { userId } } },
     }),
     prisma.sourceVideo.findMany({
-      where: { project: { userId }, status: { in: ['EXTRACTING_AUDIO', 'TRANSCRIBING', 'ANALYZING'] } },
+      where: { project: { userId }, status: { in: ['EXTRACTING_AUDIO', 'TRANSCRIBING', 'ANALYZING', 'AWAITING_LOCAL_DOWNLOAD'] } },
       select: { id: true, title: true, status: true, projectId: true },
       take: 3,
     }),
+    prisma.sourceVideo.count({ where: { project: { userId } } }),
+    prisma.scheduledPost.count({ where: { userId, status: { in: ['PENDING', 'MANUAL_SCHEDULED'] } } }),
+    prisma.socialAccount.count({ where: { userId } }),
   ])
 
   const stats = [
-    { label: 'Projetos', value: projects.length, icon: FolderOpen },
-    { label: 'Cortes Gerados', value: totalClips, icon: Scissors },
-    { label: 'Em processamento', value: recentVideos.length, icon: Clock },
+    { label: 'Vídeos enviados', value: totalVideos, icon: Upload, tone: 'violet' as const },
+    { label: 'Cortes gerados', value: totalClips, icon: Scissors, tone: 'violet' as const },
+    { label: 'Cortes agendados', value: scheduledCount, icon: CalendarClock, tone: 'neon' as const },
+    { label: 'Redes conectadas', value: connectedAccounts, icon: Link2, tone: 'neon' as const },
   ]
 
   const statusLabel: Record<string, string> = {
     EXTRACTING_AUDIO: 'Extraindo áudio...',
     TRANSCRIBING: 'Transcrevendo...',
     ANALYZING: 'Analisando com IA...',
+    AWAITING_LOCAL_DOWNLOAD: 'Aguardando download automático...',
   }
 
   return (
     <div className="space-y-8 animate-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-white/40 text-sm mt-1">
-            Bem-vindo de volta, {session?.user?.name?.split(' ')[0]}
-          </p>
+      {/* Hero header */}
+      <div className="relative overflow-hidden rounded-3xl glass p-6 sm:p-8">
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-violet-600/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-neon-500/10 rounded-full blur-3xl" />
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">
+              Bem-vindo de volta, <span className="gradient-text">{session?.user?.name?.split(' ')[0] || 'criador'}</span>
+            </h1>
+            <p className="text-white/40 text-sm mt-1.5">Transforme suas lives e vídeos longos em cortes virais com IA.</p>
+          </div>
+          <Link href="/projects/new">
+            <Button icon={<Plus className="w-4 h-4" />}>Novo projeto</Button>
+          </Link>
         </div>
-        <Link
-          href="/projects/new"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-all duration-200"
-        >
-          <Plus className="w-4 h-4" />
-          Novo projeto
-        </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((s) => (
-          <div key={s.label} className="glass rounded-2xl p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                <s.icon className="w-4.5 h-4.5 text-violet-400" />
-              </div>
-              <span className="text-white/50 text-sm">{s.label}</span>
-            </div>
-            <p className="text-3xl font-bold">{s.value}</p>
-          </div>
+          <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} tone={s.tone} />
         ))}
       </div>
 
       {/* Processing */}
       {recentVideos.length > 0 && (
-        <div className="glass rounded-2xl p-6">
+        <GlassCard className="p-6">
           <h2 className="font-semibold mb-4 flex items-center gap-2">
             <Clock className="w-4 h-4 text-violet-400" />
             Em processamento
@@ -103,7 +105,7 @@ export default async function DashboardPage() {
               </Link>
             ))}
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Projects */}
@@ -116,27 +118,22 @@ export default async function DashboardPage() {
         </div>
 
         {projects.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center">
-            <FolderOpen className="w-12 h-12 text-white/20 mx-auto mb-4" />
-            <p className="text-white/50 mb-4">Nenhum projeto ainda</p>
-            <Link
-              href="/projects/new"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Criar primeiro projeto
-            </Link>
-          </div>
+          <EmptyState
+            icon={FolderOpen}
+            title="Nenhum projeto ainda"
+            description="Crie seu primeiro projeto pra importar uma live ou vídeo e deixar a IA encontrar os melhores cortes."
+            action={
+              <Link href="/projects/new">
+                <Button icon={<Plus className="w-4 h-4" />}>Criar primeiro projeto</Button>
+              </Link>
+            }
+          />
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((p) => {
               const video = p.sourceVideos[0]
               return (
-                <Link
-                  key={p.id}
-                  href={`/projects/${p.id}`}
-                  className="glass-hover rounded-2xl p-5 block group"
-                >
+                <GlassCard key={p.id} href={`/projects/${p.id}`} hover className="p-5 group">
                   <div className="flex items-start justify-between mb-3">
                     {video?.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -160,22 +157,16 @@ export default async function DashboardPage() {
                   </p>
                   {video && (
                     <div className="mt-3 pt-3 border-t border-white/5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        video.status === 'COMPLETED'
-                          ? 'bg-green-500/15 text-green-400'
-                          : video.status === 'FAILED'
-                          ? 'bg-red-500/15 text-red-400'
-                          : 'bg-violet-500/15 text-violet-400'
-                      }`}>
+                      <Badge tone={video.status === 'COMPLETED' ? 'success' : video.status === 'FAILED' ? 'error' : 'violet'}>
                         {video.status === 'COMPLETED'
                           ? `${video.suggestedClips.length} cortes`
                           : video.status === 'FAILED'
                           ? 'Falhou'
                           : 'Processando...'}
-                      </span>
+                      </Badge>
                     </div>
                   )}
-                </Link>
+                </GlassCard>
               )
             })}
           </div>
