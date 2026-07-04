@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import type { EditorState } from '@/types'
-import { mergeEditorState } from '@/lib/editor-state'
+import { mergeEditorState, withDefaultVideoLayer } from '@/lib/editor-state'
 
 // GET  /api/template-outputs/:id/editor  -> dados pro editor abrir
 // PATCH /api/template-outputs/:id/editor -> autosave do estado do editor
@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Edição/legendas só estão disponíveis para resultados em vídeo' }, { status: 409 })
   }
 
-  const editorState = mergeEditorState(output.editorState, {})
+  const editorState = withDefaultVideoLayer(mergeEditorState(output.editorState, {}), output.duration || 0)
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { lastSplitLayoutConfig: true } })
 
   return NextResponse.json({
@@ -106,6 +106,32 @@ const videoTransformSchema = z.object({
   positionY: z.number().min(-1).max(1),
 })
 
+const layerTransformSchema = z.object({
+  x: z.number().min(-1).max(1),
+  y: z.number().min(-1).max(1),
+  width: z.number().min(0).max(1),
+  height: z.number().min(0).max(1),
+  scale: z.number().min(0.3).max(4),
+  rotation: z.number().min(-180).max(180),
+  opacity: z.number().min(0).max(1),
+  cropX: z.number().min(0).max(1),
+  cropY: z.number().min(0).max(1),
+  cropWidth: z.number().min(0).max(1),
+  cropHeight: z.number().min(0).max(1),
+})
+
+const editorLayerSchema = z.object({
+  id: z.string(),
+  type: z.enum(['VIDEO', 'FACECAM', 'TEXT', 'CAPTION', 'IMAGE', 'EFFECT']),
+  name: z.string(),
+  visible: z.boolean(),
+  locked: z.boolean(),
+  startTime: z.number(),
+  endTime: z.number(),
+  zIndex: z.number(),
+  transform: layerTransformSchema,
+})
+
 const patchSchema = z.object({
   textOverlays: z.array(textOverlaySchema).optional(),
   captions: z.array(captionSegmentSchema).optional(),
@@ -114,6 +140,7 @@ const patchSchema = z.object({
   layoutMode: z.enum(['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']).nullable().optional(),
   layoutConfig: splitLayoutConfigSchema.optional(),
   transform: videoTransformSchema.optional(),
+  layers: z.array(editorLayerSchema).optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

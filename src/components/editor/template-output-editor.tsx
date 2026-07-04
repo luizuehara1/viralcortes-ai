@@ -3,17 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, LayoutTemplate, Move3d } from 'lucide-react'
-import { VideoPreviewPlayer } from './video-preview-player'
-import { TimelineScrubber } from './timeline-scrubber'
+import { VideoEditorCanvas } from './video-editor-canvas'
 import { TextOverlaysPanel } from './text-overlays-panel'
 import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
-import { TransformPanel } from './transform-panel'
+import { PropertiesPanel } from './properties-panel'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
 import { TabButton } from '@/components/ui/tab-button'
-import type { EditorState, SplitLayoutConfig } from '@/types'
+import type { EditorState, SplitLayoutConfig, EditorLayer } from '@/types'
 
 interface Props {
   output: { id: string; duration: number; caption: string | null }
@@ -42,6 +41,7 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
   const [renderError, setRenderError] = useState('')
   const [schedulePlatform, setSchedulePlatform] = useState<'INSTAGRAM_REELS' | 'YOUTUBE_SHORTS' | null>(null)
   const [appliedAt, setAppliedAt] = useState<number | null>(null)
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(initialEditorState.layers?.[0]?.id ?? null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   const seekTokenRef = useRef(0)
@@ -74,6 +74,12 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
     seekTokenRef.current += 1
     setSeekRequest({ time, token: seekTokenRef.current })
   }, [])
+
+  const updateLayerTransform = (id: string, patch: Partial<EditorLayer['transform']>) =>
+    setEditorState((s) => ({
+      ...s,
+      layers: (s.layers ?? []).map((l) => (l.id === id ? { ...l, transform: { ...l.transform, ...patch } } : l)),
+    }))
 
   const applyEdits = async () => {
     setRendering(true)
@@ -143,52 +149,43 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
       )}
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
-        <div className="space-y-3">
-          <VideoPreviewPlayer
-            videoSrc={`/api/template-outputs/${output.id}/stream${appliedAt ? `?t=${appliedAt}` : ''}`}
-            clipStart={0}
-            clipEnd={duration}
-            playing={playing}
-            onPlayingChange={setPlaying}
-            seekRequest={seekRequest}
-            currentTime={currentTime}
-            onTimeUpdate={setCurrentTime}
-            overlays={editorState.textOverlays}
-            captions={editorState.captions}
-            captionStyle={editorState.captionStyle}
-            onOverlayMove={(id, x, y) =>
-              setEditorState((s) => ({
-                ...s,
-                textOverlays: s.textOverlays.map((o) => (o.id === id ? { ...o, x, y } : o)),
-              }))
-            }
-            splitLayout={
-              editorState.layoutMode && editorState.layoutConfig
-                ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
-                : undefined
-            }
-            onSplitLayoutRegionMove={(x, y) =>
-              setEditorState((s) =>
-                s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
-              )
-            }
-            transform={editorState.transform}
-          />
-          <div className="glass rounded-xl p-4 space-y-2.5">
-            <div className="flex items-center justify-between text-xs text-white/40">
-              <button
-                onClick={() => setPlaying((p) => !p)}
-                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                {playing ? 'Pausar' : 'Reproduzir'}
-              </button>
-              <span>
-                {currentTime.toFixed(1)}s / {duration.toFixed(1)}s
-              </span>
-            </div>
-            <TimelineScrubber duration={duration} currentTime={currentTime} onSeek={seekTo} />
-          </div>
-        </div>
+        <VideoEditorCanvas
+          duration={duration}
+          onSeek={seekTo}
+          videoSrc={`/api/template-outputs/${output.id}/stream${appliedAt ? `?t=${appliedAt}` : ''}`}
+          clipStart={0}
+          clipEnd={duration}
+          playing={playing}
+          onPlayingChange={setPlaying}
+          seekRequest={seekRequest}
+          currentTime={currentTime}
+          onTimeUpdate={setCurrentTime}
+          overlays={editorState.textOverlays}
+          captions={editorState.captions}
+          captionStyle={editorState.captionStyle}
+          onOverlayMove={(id, x, y) =>
+            setEditorState((s) => ({
+              ...s,
+              textOverlays: s.textOverlays.map((o) => (o.id === id ? { ...o, x, y } : o)),
+            }))
+          }
+          splitLayout={
+            editorState.layoutMode && editorState.layoutConfig
+              ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
+              : undefined
+          }
+          onSplitLayoutRegionMove={(x, y) =>
+            setEditorState((s) =>
+              s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
+            )
+          }
+          transform={editorState.transform}
+          layers={editorState.layers}
+          selectedLayerId={selectedLayerId}
+          onSelectLayer={setSelectedLayerId}
+          onLayerTransformChange={updateLayerTransform}
+          onLayersChange={(layers) => setEditorState((s) => ({ ...s, layers }))}
+        />
 
         <div className="glass rounded-2xl p-4 space-y-4 h-fit">
           <div className="flex gap-1.5 p-1 rounded-xl bg-white/5">
@@ -244,9 +241,12 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
             />
           )}
           {tab === 'transform' && (
-            <TransformPanel
-              transform={editorState.transform}
-              onChange={(transform) => setEditorState((s) => ({ ...s, transform }))}
+            <PropertiesPanel
+              layer={editorState.layers?.find((l) => l.id === selectedLayerId) ?? editorState.layers?.[0]}
+              onChange={(patch) => {
+                const layer = editorState.layers?.find((l) => l.id === selectedLayerId) ?? editorState.layers?.[0]
+                if (layer) updateLayerTransform(layer.id, patch)
+              }}
             />
           )}
         </div>

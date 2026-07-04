@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
-import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId, SplitLayoutMode, SplitLayoutConfig, VideoTransform } from '@/types'
+import type { TextOverlay, CaptionSegment, CaptionStyle, Effect, FontFamilyId, SplitLayoutMode, SplitLayoutConfig, VideoTransform, EditorLayer, LayerTransform } from '@/types'
 
 if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH)
 if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH)
@@ -295,11 +295,14 @@ export interface RenderClipOptions {
   // ver buildSplitLayoutFilters. Ausente = comportamento normal de sempre.
   layoutMode?: SplitLayoutMode
   layoutConfig?: SplitLayoutConfig
-  // Zoom/posição manual do vídeo principal — sobrepõe fitMode (vira um
-  // "COVER" com zoom extra e ponto de corte deslocado). Ignorado quando
-  // hasSplitLayout está ativo (o layout split já define sua própria
-  // composição) ou format é 'ORIGINAL' (nunca cropa/faz zoom).
+  // Zoom/posição manual do vídeo principal (mecanismo legado, pré-camadas) —
+  // sobrepõe fitMode (vira um "COVER" com zoom extra e ponto de corte
+  // deslocado). Ignorado quando hasSplitLayout está ativo, ou quando `layers`
+  // abaixo já tem uma camada VIDEO (essa tem prioridade).
   transform?: VideoTransform
+  // Sistema de camadas — Etapa 1 só olha pra camada `type: 'VIDEO'` (se
+  // existir, seu transform tem prioridade sobre o `transform` legado acima).
+  layers?: EditorLayer[]
   onProgress?: (progress: number) => void
 }
 
@@ -340,6 +343,19 @@ function buildTransformFilter(
     `crop=${canvasW}:${canvasH}:(in_w-${canvasW})*${halfX.toFixed(4)}:(in_h-${canvasH})*${halfY.toFixed(4)}`,
     'format=yuv420p',
   ]
+}
+
+// Crop manual da camada VIDEO (recorta a fonte ANTES do zoom/pan de
+// buildTransformFilter) — pixels pré-calculados em JS, seguro aqui porque é
+// o PRIMEIRO filtro da cadeia (opera sobre o frame cru decodificado, então
+// não há nenhum scale anterior cujo arredondamento poderia divergir da conta
+// em JS) — mesmo raciocínio já usado no crop de facecam de buildSplitLayoutFilters.
+function buildLayerCropFilter(t: LayerTransform, srcW: number, srcH: number): string[] {
+  const w = Math.max(2, Math.round((t.cropWidth * srcW) / 2) * 2)
+  const h = Math.max(2, Math.round((t.cropHeight * srcH) / 2) * 2)
+  const x = Math.min(srcW - w, Math.max(0, Math.round(t.cropX * srcW)))
+  const y = Math.min(srcH - h, Math.max(0, Math.round(t.cropY * srcH)))
+  return [`crop=${w}:${h}:${x}:${y}`]
 }
 
 // Empilha duas regiões do MESMO vídeo fonte uma em cima da outra (layout
@@ -542,16 +558,40 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   // getFrameSize() ser definida (algumas linhas abaixo), porque precisa
   // conhecer as dimensões do canvas de saída antes de montar o filtro.
   const hasSplitLayout = !!(opts.layoutMode && opts.layoutConfig)
-  // Zoom/posição manual — só ativa quando difere de fato do padrão (evita
-  // trabalho extra no caminho comum sem transform). Funciona mesmo com
-  // format 'ORIGINAL' (TemplateOutput sempre usa 'ORIGINAL') — getFrameSize()
-  // já resolve o canvas certo (dimensão nativa da fonte) nesse caso, então
-  // zoom/posição vira "aproximar mantendo a mesma resolução de saída".
-  const t = opts.transform
-  const hasTransform =
-    !hasSplitLayout && !!t && (t.zoom > 1.001 || Math.abs(t.positionX) > 0.001 || Math.abs(t.positionY) > 0.001)
 
-  if (hasSplitLayout || hasTransform) {
+  // Camada VIDEO (sistema de camadas novo) tem prioridade sobre o `transform`
+  // legado quando existir — os dois representam o mesmo conceito (zoom/pan
+  // de cover-fill), só que a camada é a fonte de verdade uma vez que o corte
+  // foi aberto no editor novo. Convertido pro mesmo formato do transform
+  // legado pra reaproveitar buildTransformFilter sem duplicar lógica.
+  const videoLayer = opts.layers?.find((l) => l.type === 'VIDEO')
+  const effective: VideoTransform | undefined = videoLayer
+    ? {
+        zoom: Math.min(4, Math.max(1, videoLayer.transform.scale)),
+        positionX: Math.min(1, Math.max(-1, videoLayer.transform.x)),
+        positionY: Math.min(1, Math.max(-1, videoLayer.transform.y)),
+      }
+    : opts.transform
+
+  // Zoom/posição — só ativa quando difere de fato do padrão (evita trabalho
+  // extra no caminho comum sem transform). Funciona mesmo com format
+  // 'ORIGINAL' (TemplateOutput sempre usa 'ORIGINAL') — getFrameSize() já
+  // resolve o canvas certo (dimensão nativa da fonte) nesse caso, então
+  // zoom/posição vira "aproximar mantendo a mesma resolução de saída".
+  const hasTransform =
+    !hasSplitLayout && !!effective &&
+    (effective.zoom > 1.001 || Math.abs(effective.positionX) > 0.001 || Math.abs(effective.positionY) > 0.001)
+
+  // Crop manual da camada VIDEO (recorta a fonte ANTES do zoom/pan acima) —
+  // só existe no sistema de camadas novo, sem equivalente no `transform`
+  // legado.
+  const cropSrc = videoLayer?.transform
+  const hasCrop = !hasSplitLayout && !!cropSrc && (
+    cropSrc.cropX > 0.001 || cropSrc.cropY > 0.001 ||
+    cropSrc.cropWidth < 0.999 || cropSrc.cropHeight < 0.999
+  )
+
+  if (hasSplitLayout || hasTransform || hasCrop) {
     // placeholder — sobrescrito abaixo, depois que getFrameSize existir.
   } else if (isOriginal) {
     // Keeps the source aspect ratio untouched — no crop, no scale to a fixed
@@ -622,9 +662,14 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
     )
     vfFilters = []
     finalVideoLabel = 'outv'
-  } else if (hasTransform) {
+  } else if (hasTransform || hasCrop) {
     const { width: canvasW, height: canvasH } = await getFrameSize()
-    vfFilters = buildTransformFilter(t!, canvasW, canvasH)
+    let cropFilter: string[] = []
+    if (hasCrop) {
+      const srcMeta = await getVideoMetadata(inputPath)
+      cropFilter = buildLayerCropFilter(cropSrc!, srcMeta.width || canvasW, srcMeta.height || canvasH)
+    }
+    vfFilters = [...cropFilter, ...buildTransformFilter(effective!, canvasW, canvasH)]
   }
 
   // 'clean' is the default: no drawtext, no burned-in title/caption, no box.

@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import type { EditorState } from '@/types'
-import { mergeEditorState } from '@/lib/editor-state'
+import { mergeEditorState, withDefaultVideoLayer } from '@/lib/editor-state'
 
 // GET  /api/clips/:id/editor  -> dados pro editor abrir (clipe + estado salvo)
 // PATCH /api/clips/:id/editor -> autosave do estado do editor (merge parcial)
@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Vídeo fonte não disponível para preview' }, { status: 409 })
   }
 
-  const editorState = mergeEditorState(clip.editorState, {})
+  const editorState = withDefaultVideoLayer(mergeEditorState(clip.editorState, {}), clip.endTime - clip.startTime)
 
   // Último ajuste de layout split-screen do usuário — pré-preenche o painel
   // "Layout" quando esse clipe específico ainda não tem um layoutConfig
@@ -115,6 +115,34 @@ const videoTransformSchema = z.object({
   positionY: z.number().min(-1).max(1),
 })
 
+const layerTransformSchema = z.object({
+  x: z.number().min(-1).max(1),
+  y: z.number().min(-1).max(1),
+  width: z.number().min(0).max(1),
+  height: z.number().min(0).max(1),
+  // Schema permissivo (pensando em futuras camadas com caixa de verdade) —
+  // o render trava a camada VIDEO especificamente em [1,4] (ver ffmpeg.ts).
+  scale: z.number().min(0.3).max(4),
+  rotation: z.number().min(-180).max(180),
+  opacity: z.number().min(0).max(1),
+  cropX: z.number().min(0).max(1),
+  cropY: z.number().min(0).max(1),
+  cropWidth: z.number().min(0).max(1),
+  cropHeight: z.number().min(0).max(1),
+})
+
+const editorLayerSchema = z.object({
+  id: z.string(),
+  type: z.enum(['VIDEO', 'FACECAM', 'TEXT', 'CAPTION', 'IMAGE', 'EFFECT']),
+  name: z.string(),
+  visible: z.boolean(),
+  locked: z.boolean(),
+  startTime: z.number(),
+  endTime: z.number(),
+  zIndex: z.number(),
+  transform: layerTransformSchema,
+})
+
 const patchSchema = z.object({
   textOverlays: z.array(textOverlaySchema).optional(),
   captions: z.array(captionSegmentSchema).optional(),
@@ -123,6 +151,7 @@ const patchSchema = z.object({
   layoutMode: z.enum(['MAIN_TOP_FACECAM_BOTTOM', 'FACECAM_TOP_MAIN_BOTTOM']).nullable().optional(),
   layoutConfig: splitLayoutConfigSchema.optional(),
   transform: videoTransformSchema.optional(),
+  layers: z.array(editorLayerSchema).optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

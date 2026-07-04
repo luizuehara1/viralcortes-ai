@@ -234,6 +234,53 @@ export interface VideoTransform {
 
 export const DEFAULT_VIDEO_TRANSFORM: VideoTransform = { zoom: 1, positionX: 0, positionY: 0 }
 
+// Sistema de camadas (base do editor estilo CapCut) — Etapa 1 implementa só a
+// camada VIDEO. FACECAM/TEXT/CAPTION/IMAGE/EFFECT ficam reservados no tipo
+// pras próximas etapas, ainda sem uso real.
+export type LayerType = 'VIDEO' | 'FACECAM' | 'TEXT' | 'CAPTION' | 'IMAGE' | 'EFFECT'
+
+export interface LayerTransform {
+  // Convenção da camada VIDEO (única implementada por ora): x/y são um OFFSET
+  // DE PAN -1 a 1 (0 = centralizado — mesma convenção de VideoTransform),
+  // scale é o zoom de cover-fill (>=1, vídeo sempre preenche o quadro
+  // inteiro). width/height ficam reservados (sempre 1 por ora) pra quando
+  // existirem camadas com caixa de verdade (FACECAM/TEXT/IMAGE, etapas
+  // futuras).
+  x: number
+  y: number
+  width: number
+  height: number
+  scale: number
+  // Guardados mas ainda NÃO aplicados no render — sem um compositor
+  // multi-camada de verdade, rotação/opacidade não têm efeito visual
+  // sozinhas com uma única camada de vídeo preenchendo tudo.
+  rotation: number
+  opacity: number
+  // 0-1 normalizado ao vídeo FONTE (mesma convenção de SplitLayoutRegion) —
+  // sub-retângulo recortado ANTES do scale/posição. (0,0,1,1) = sem crop.
+  cropX: number
+  cropY: number
+  cropWidth: number
+  cropHeight: number
+}
+
+export const DEFAULT_LAYER_TRANSFORM: LayerTransform = {
+  x: 0, y: 0, width: 1, height: 1, scale: 1, rotation: 0, opacity: 1,
+  cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1,
+}
+
+export interface EditorLayer {
+  id: string
+  type: LayerType
+  name: string
+  visible: boolean
+  locked: boolean
+  startTime: number
+  endTime: number
+  zIndex: number
+  transform: LayerTransform
+}
+
 export interface EditorState {
   textOverlays: TextOverlay[]
   captions: CaptionSegment[]
@@ -247,6 +294,13 @@ export interface EditorState {
   layoutMode?: SplitLayoutMode | null
   layoutConfig?: SplitLayoutConfig
   transform?: VideoTransform
+  // Sistema de camadas (Etapa 1: só a camada VIDEO é usada de verdade).
+  // Ausente/vazio = corte nunca aberto no editor de camadas novo — nesse
+  // caso o render cai pro `transform` legado acima (ver renderClip).
+  layers?: EditorLayer[]
+  // Estado de seleção da UI — não entra no schema zod/autosave por ora
+  // (com uma única camada não há o que persistir de seleção entre reloads).
+  selectedLayerId?: string | null
 }
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {

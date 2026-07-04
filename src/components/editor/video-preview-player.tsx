@@ -5,7 +5,9 @@ import {
   FONT_OPTIONS, DEFAULT_FONT_FAMILY,
   type TextOverlay, type CaptionSegment, type CaptionStyle, type FontFamilyId,
   type SplitLayoutRegion, type SplitLayoutMode, type VideoTransform,
+  type EditorLayer, type LayerTransform,
 } from '@/types'
+import { TransformBox } from './transform-box'
 
 interface SeekRequest {
   time: number // segundos, relativo ao início do clipe
@@ -40,7 +42,16 @@ interface Props {
   // Zoom/posição manual do vídeo principal — aproximação via CSS (scale +
   // translate no próprio elemento <video>, recortado pelo overflow-hidden
   // do container). O resultado exato só sai no render final do ffmpeg.
+  // Fallback pré-camadas — ignorado quando `layers` já tem uma camada VIDEO.
   transform?: VideoTransform
+  // Sistema de camadas — Etapa 1 só desenha/manipula a camada `type: 'VIDEO'`.
+  // Clicar seleciona, arrastar o corpo move, arrastar um canto dá zoom
+  // (ao redor do centro — o vídeo sempre preenche o quadro inteiro, não uma
+  // caixa que fica menor).
+  layers?: EditorLayer[]
+  selectedLayerId?: string | null
+  onSelectLayer?: (id: string) => void
+  onLayerTransformChange?: (id: string, patch: Partial<LayerTransform>) => void
 }
 
 const FONT_CSS_FAMILY: Record<FontFamilyId, string> = Object.fromEntries(
@@ -79,6 +90,10 @@ export function VideoPreviewPlayer({
   splitLayout,
   onSplitLayoutRegionMove,
   transform,
+  layers,
+  selectedLayerId,
+  onSelectLayer,
+  onLayerTransformChange,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -91,6 +106,14 @@ export function VideoPreviewPlayer({
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null)
   const [draggingRegion, setDraggingRegion] = useState(false)
   const [videoError, setVideoError] = useState('')
+
+  // Manipulação direta da camada de vídeo — mover (arrastar o corpo) ou dar
+  // zoom (arrastar um canto, ao redor do centro do quadro). Cada modo grava
+  // seu próprio "estado inicial" no início do arraste pra computar o delta
+  // relativo, em vez de valor absoluto (evita "pulos").
+  const [draggingLayer, setDraggingLayer] = useState<{ id: string; mode: 'move' | 'scale' } | null>(null)
+  const moveStartRef = useRef<{ clientX: number; clientY: number; x: number; y: number } | null>(null)
+  const scaleStartRef = useRef<{ distance: number; scale: number } | null>(null)
 
   // Reseta o erro ao trocar de fonte (ex.: depois de "Aplicar edições", o
   // template-output-editor troca a URL com um ?t= novo pra forçar recarregar).
@@ -201,6 +224,76 @@ export function VideoPreviewPlayer({
     }
   }, [draggingRegion, dragOffset, onSplitLayoutRegionMove, splitLayout])
 
+  // Arrastar/dar zoom na camada de vídeo — mesmo idioma dos dois blocos
+  // acima (useState local + listeners globais enquanto o arraste durar).
+  useEffect(() => {
+    if (!draggingLayer || !onLayerTransformChange) return
+
+    const handleMove = (clientX: number, clientY: number) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      if (draggingLayer.mode === 'move' && moveStartRef.current) {
+        const start = moveStartRef.current
+        const deltaX = (clientX - start.clientX) / rect.width
+        const deltaY = (clientY - start.clientY) / rect.height
+        onLayerTransformChange(draggingLayer.id, {
+          x: Math.min(1, Math.max(-1, start.x + deltaX)),
+          y: Math.min(1, Math.max(-1, start.y + deltaY)),
+        })
+      } else if (draggingLayer.mode === 'scale' && scaleStartRef.current) {
+        const start = scaleStartRef.current
+        const centerX = rect.left + rect.width / 2
+        const centerY = rect.top + rect.height / 2
+        const currentDistance = Math.hypot(clientX - centerX, clientY - centerY)
+        if (currentDistance <= 0 || start.distance <= 0) return
+        const newScale = start.scale * (currentDistance / start.distance)
+        onLayerTransformChange(draggingLayer.id, { scale: Math.min(4, Math.max(1, newScale)) })
+      }
+    }
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      if (touch) handleMove(touch.clientX, touch.clientY)
+    }
+    const stopDragging = () => {
+      setDraggingLayer(null)
+      moveStartRef.current = null
+      scaleStartRef.current = null
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', stopDragging)
+    window.addEventListener('touchmove', onTouchMove)
+    window.addEventListener('touchend', stopDragging)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', stopDragging)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', stopDragging)
+    }
+  }, [draggingLayer, onLayerTransformChange])
+
+  const videoLayer = layers?.find((l) => l.type === 'VIDEO')
+
+  const startMovingLayer = (clientX: number, clientY: number) => {
+    if (!videoLayer) return
+    onSelectLayer?.(videoLayer.id)
+    moveStartRef.current = { clientX, clientY, x: videoLayer.transform.x, y: videoLayer.transform.y }
+    setDraggingLayer({ id: videoLayer.id, mode: 'move' })
+  }
+
+  const startScalingLayer = (clientX: number, clientY: number) => {
+    if (!videoLayer) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    onSelectLayer?.(videoLayer.id)
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    scaleStartRef.current = { distance: Math.hypot(clientX - centerX, clientY - centerY), scale: videoLayer.transform.scale }
+    setDraggingLayer({ id: videoLayer.id, mode: 'scale' })
+  }
+
   const startDraggingRegion = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect || !splitLayout) return
@@ -225,6 +318,13 @@ export function VideoPreviewPlayer({
   const visibleOverlays = overlays.filter((o) => currentTime >= o.startTime && currentTime <= o.endTime)
   const activeWord = captions.flatMap((s) => s.words).find((w) => currentTime >= w.start && currentTime <= w.end)
 
+  // A camada VIDEO (sistema novo) tem prioridade sobre o `transform` legado
+  // pro preview — mesma precedência do render em ffmpeg.ts.
+  const previewTransform: VideoTransform | undefined = videoLayer
+    ? { zoom: videoLayer.transform.scale, positionX: videoLayer.transform.x, positionY: videoLayer.transform.y }
+    : transform
+  const layerSelected = !!videoLayer && selectedLayerId === videoLayer.id
+
   return (
     // Wrapper só pra moldura (gradiente sutil + sombra) — containerRef fica
     // no elemento de dentro, sem padding/borda, pra não desalinhar a
@@ -240,8 +340,8 @@ export function VideoPreviewPlayer({
         src={videoSrc}
         className="w-full h-full object-contain bg-black"
         style={
-          transform
-            ? { transform: `scale(${transform.zoom}) translate(${transform.positionX * (transform.zoom - 1) * 50}%, ${transform.positionY * (transform.zoom - 1) * 50}%)` }
+          previewTransform
+            ? { transform: `scale(${previewTransform.zoom}) translate(${previewTransform.positionX * (previewTransform.zoom - 1) * 50}%, ${previewTransform.positionY * (previewTransform.zoom - 1) * 50}%)` }
             : undefined
         }
         onTimeUpdate={handleTimeUpdate}
@@ -259,6 +359,15 @@ export function VideoPreviewPlayer({
         }}
         playsInline
       />
+
+      {videoLayer && onLayerTransformChange && (
+        <TransformBox
+          selected={layerSelected}
+          onSelect={() => onSelectLayer?.(videoLayer.id)}
+          onStartMove={startMovingLayer}
+          onStartScale={startScalingLayer}
+        />
+      )}
 
       {visibleOverlays.map((overlay) => (
         <div

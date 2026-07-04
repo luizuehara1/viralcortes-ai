@@ -53,6 +53,7 @@ async function processClipRender(job: Job) {
     layoutMode: editorState?.layoutMode ?? undefined,
     layoutConfig: editorState?.layoutConfig,
     transform: editorState?.transform,
+    layers: editorState?.layers,
     onProgress: async (progress) => {
       await job.updateProgress(progress)
     },

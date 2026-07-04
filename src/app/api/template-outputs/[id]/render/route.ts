@@ -55,6 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       layoutMode: editorState?.layoutMode ?? undefined,
       layoutConfig: editorState?.layoutConfig,
       transform: editorState?.transform,
+      layers: editorState?.layers,
     })
 
     const oldPath = output.filePath
