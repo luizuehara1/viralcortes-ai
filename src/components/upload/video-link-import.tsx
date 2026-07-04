@@ -95,6 +95,29 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
     }
   }
 
+  // A validação (só busca metadados) pode ser bloqueada mesmo quando o
+  // download de verdade tem uma saída (downloader local) -- sem essa opção,
+  // um bloqueio na validação travava o fluxo antes mesmo do vídeo entrar na
+  // fila que sabe lidar com isso (ver AWAITING_LOCAL_DOWNLOAD).
+  const importAnyway = async () => {
+    if (!url.trim()) return
+    setCreating(true)
+    setError('')
+    try {
+      const res = await fetch('/api/upload/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, url: url.trim() }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body) throw new Error(body?.error || 'Falha ao importar o vídeo')
+      onSuccess(body.sourceVideoId)
+    } catch (err: any) {
+      setError(err.message || 'Falha ao importar o vídeo')
+      setCreating(false)
+    }
+  }
+
   const isLongOrLive = validated && (validated.isLive || (validated.duration ?? 0) > LONG_VIDEO_THRESHOLD_SECONDS)
 
   return (
@@ -151,6 +174,16 @@ export function VideoLinkImport({ projectId, onSuccess, onSwitchToUpload }: Prop
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
+            {errorCode === 'PLATFORM_BLOCKED_ACCESS' && (
+              <button
+                onClick={importAnyway}
+                disabled={creating}
+                className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-all flex items-center justify-center gap-2"
+              >
+                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {creating ? 'Enviando...' : 'Importar mesmo assim (via downloader local)'}
+              </button>
+            )}
             {(errorCode === 'YOUTUBE_REQUIRES_LOGIN_OR_COOKIES' || errorCode === 'PLATFORM_BLOCKED_ACCESS') && onSwitchToUpload && (
               <button
                 onClick={onSwitchToUpload}
