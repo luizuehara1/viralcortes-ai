@@ -107,6 +107,8 @@ const splitLayoutConfigSchema = z.object({
   facecamZoom: z.number().min(1).max(4),
   splitRatio: z.number().min(0.2).max(0.8),
   facecamConfirmed: z.boolean().optional(),
+  mainRegion: splitLayoutRegionSchema.optional(),
+  mainZoom: z.number().min(1).max(4).optional(),
 })
 
 const videoTransformSchema = z.object({

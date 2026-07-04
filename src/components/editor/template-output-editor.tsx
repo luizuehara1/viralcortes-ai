@@ -14,7 +14,7 @@ import { CanvasFormatSelector } from './canvas-format-selector'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
 import type { EditorState, SplitLayoutConfig, EditorLayer } from '@/types'
-import { DEFAULT_EDITOR_CANVAS } from '@/types'
+import { DEFAULT_EDITOR_CANVAS, FULL_FRAME_REGION } from '@/types'
 
 interface Props {
   output: { id: string; duration: number; caption: string | null }
@@ -191,12 +191,26 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
           }
           splitLayout={
             editorState.layoutMode && editorState.layoutConfig
-              ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
+              ? {
+                  mode: editorState.layoutMode,
+                  splitRatio: editorState.layoutConfig.splitRatio,
+                  facecamRegion: editorState.layoutConfig.facecamRegion,
+                  facecamZoom: editorState.layoutConfig.facecamZoom,
+                  mainRegion: editorState.layoutConfig.mainRegion ?? FULL_FRAME_REGION,
+                  mainZoom: editorState.layoutConfig.mainZoom ?? 1,
+                }
               : undefined
           }
-          onSplitLayoutRegionMove={(x, y) =>
+          onFacecamRegionMove={(x, y) =>
             setEditorState((s) =>
               s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
+            )
+          }
+          onMainRegionMove={(x, y) =>
+            setEditorState((s) =>
+              s.layoutConfig
+                ? { ...s, layoutConfig: { ...s.layoutConfig, mainRegion: { ...(s.layoutConfig.mainRegion ?? FULL_FRAME_REGION), x, y } } }
+                : s
             )
           }
           transform={editorState.transform}

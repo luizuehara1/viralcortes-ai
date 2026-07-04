@@ -450,12 +450,28 @@ function buildSplitLayoutFilters(
   const cropX = Math.min(srcW - cropW, Math.max(0, Math.round(fcX + (fcW - cropW) / 2)))
   const cropY = Math.min(srcH - cropH, Math.max(0, Math.round(fcY + (fcH - cropH) / 2)))
 
+  // Mesma matemática pro painel PRINCIPAL — ausente (configs salvas antes
+  // dessa opção existir) cai no frame inteiro sem zoom, resultado idêntico
+  // ao comportamento de sempre (o crop vira um no-op: recorta o próprio
+  // tamanho do frame, na posição 0,0).
+  const mainRegion = config.mainRegion ?? { x: 0, y: 0, width: 1, height: 1 }
+  const mainZoom = Math.max(1, config.mainZoom ?? 1)
+  const mX = Math.round(mainRegion.x * srcW)
+  const mY = Math.round(mainRegion.y * srcH)
+  const mW = Math.max(2, Math.round(mainRegion.width * srcW))
+  const mH = Math.max(2, Math.round(mainRegion.height * srcH))
+  const mCropW = Math.max(2, Math.round(mW / mainZoom))
+  const mCropH = Math.max(2, Math.round(mH / mainZoom))
+  const mCropX = Math.min(srcW - mCropW, Math.max(0, Math.round(mX + (mW - mCropW) / 2)))
+  const mCropY = Math.min(srcH - mCropH, Math.max(0, Math.round(mY + (mH - mCropH) / 2)))
+
   const isFacecamTop = mode === 'FACECAM_TOP_MAIN_BOTTOM'
   const mainPanelHeight = isFacecamTop ? bottomHeight : topHeight
   const facecamPanelHeight = isFacecamTop ? topHeight : bottomHeight
 
   console.log('[ffmpeg] layout split-screen — crop calculado (pixels no vídeo fonte):', JSON.stringify({
     facecamCropPx: { x: cropX, y: cropY, width: cropW, height: cropH },
+    mainCropPx: { x: mCropX, y: mCropY, width: mCropW, height: mCropH },
     topHeight, bottomHeight, isFacecamTop,
   }))
 
@@ -467,8 +483,10 @@ function buildSplitLayoutFilters(
     // ffmpeg (ex.: o do container de produção, via apt) não fazem esse
     // auto-split e falham com "Invalid stream specifier" — visto na prática.
     { filter: 'split', options: '2', inputs: 'v30', outputs: ['v30main', 'v30fc'] },
-    // Painel "principal": cover-crop do frame inteiro pra preencher W x altura do painel.
-    { filter: 'scale', options: `${canvasW}:${mainPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'v30main', outputs: 'mainScaled' },
+    // Painel "principal": crop já com zoom/posição embutidos (igual a
+    // facecam), depois cover-crop pra preencher W x altura do painel.
+    { filter: 'crop', options: `${mCropW}:${mCropH}:${mCropX}:${mCropY}`, inputs: 'v30main', outputs: 'mainCropped' },
+    { filter: 'scale', options: `${canvasW}:${mainPanelHeight}:force_original_aspect_ratio=increase:flags=lanczos`, inputs: 'mainCropped', outputs: 'mainScaled' },
     { filter: 'crop', options: `${canvasW}:${mainPanelHeight}`, inputs: 'mainScaled', outputs: 'mainPanel' },
     // Painel "facecam": crop já com zoom embutido, depois cover-crop pra preencher W x altura do painel.
     { filter: 'crop', options: `${cropW}:${cropH}:${cropX}:${cropY}`, inputs: 'v30fc', outputs: 'fcCropped' },

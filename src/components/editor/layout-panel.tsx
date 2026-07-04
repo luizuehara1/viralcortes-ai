@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { Loader2, Sparkles, AlertTriangle, Eye } from 'lucide-react'
 import {
-  SPLIT_LAYOUT_LABELS, DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE,
-  type SplitLayoutMode, type SplitLayoutConfig,
+  SPLIT_LAYOUT_LABELS, DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE, FULL_FRAME_REGION,
+  type SplitLayoutMode, type SplitLayoutConfig, type SplitLayoutRegion,
 } from '@/types'
 
 interface Props {
@@ -128,6 +128,15 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
     updateConfig({ facecamRegion: { ...config.facecamRegion, ...patch } })
   }
 
+  // Ausente = configs salvas antes do vídeo principal ficar ajustável
+  // (frame inteiro, sem zoom — mesmo fallback usado no render).
+  const mainRegion: SplitLayoutRegion = config.mainRegion ?? FULL_FRAME_REGION
+  const mainZoom = config.mainZoom ?? 1
+
+  const updateMainRegion = (patch: Partial<SplitLayoutRegion>) => {
+    updateConfig({ mainRegion: { ...mainRegion, ...patch } })
+  }
+
   const detectAutomatically = async () => {
     setDetecting(true)
     setDetectError('')
@@ -245,7 +254,7 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
             )}
           </div>
 
-          <p className="text-xs text-white/30">Arraste o retângulo no preview pra reposicionar a facecam, ou ajuste os campos abaixo.</p>
+          <p className="text-xs text-white/30">Arraste a facecam no preview (painel de cima ou de baixo, o menor dos dois) pra reposicionar, ou ajuste os campos abaixo.</p>
 
           <div className="grid grid-cols-2 gap-2.5">
             <label className="text-xs text-white/40">
@@ -298,6 +307,61 @@ export function LayoutPanel({ layoutMode, layoutConfig, detectEndpoint, previewE
             min={0.3} max={0.7} step={0.01}
             onChange={(v) => updateConfig({ splitRatio: v })}
           />
+
+          <div className="pt-2 border-t border-white/10 space-y-2.5">
+            <p className="text-xs font-medium text-white/60">Vídeo principal</p>
+            <p className="text-xs text-white/30">Arraste o vídeo de baixo no preview pra reposicionar, ou ajuste os campos abaixo.</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="text-xs text-white/40">
+                X (%)
+                <input
+                  type="number" min={0} max={100}
+                  value={pct(mainRegion.x)}
+                  onChange={(e) => updateMainRegion({ x: Math.min(1, Math.max(0, Number(e.target.value) / 100)) })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                />
+              </label>
+              <label className="text-xs text-white/40">
+                Y (%)
+                <input
+                  type="number" min={0} max={100}
+                  value={pct(mainRegion.y)}
+                  onChange={(e) => updateMainRegion({ y: Math.min(1, Math.max(0, Number(e.target.value) / 100)) })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                />
+              </label>
+              <label className="text-xs text-white/40">
+                Largura (%)
+                <input
+                  type="number" min={2} max={100}
+                  value={pct(mainRegion.width)}
+                  onChange={(e) => updateMainRegion({ width: Math.min(1, Math.max(0.02, Number(e.target.value) / 100)) })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                />
+              </label>
+              <label className="text-xs text-white/40">
+                Altura (%)
+                <input
+                  type="number" min={2} max={100}
+                  value={pct(mainRegion.height)}
+                  onChange={(e) => updateMainRegion({ height: Math.min(1, Math.max(0.02, Number(e.target.value) / 100)) })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                />
+              </label>
+            </div>
+            <SliderRow
+              label="Zoom do vídeo"
+              value={mainZoom}
+              min={1} max={3} step={0.05}
+              onChange={(v) => updateConfig({ mainZoom: v })}
+            />
+            <button
+              onClick={() => updateConfig({ mainRegion: { ...FULL_FRAME_REGION }, mainZoom: 1 })}
+              className="text-xs text-white/40 hover:text-white transition-colors"
+            >
+              Resetar vídeo principal
+            </button>
+          </div>
 
           <button
             onClick={testFacecamCrop}

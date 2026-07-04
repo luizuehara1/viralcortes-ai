@@ -37,12 +37,24 @@ interface Props {
   // painel) — omitido = overlays não ficam arrastáveis (ex.: se um dia essa
   // preview for usada só pra visualização).
   onOverlayMove?: (id: string, x: number, y: number) => void
-  // Layout split-screen (facecam) — desenha o retângulo da facecam
-  // (arrastável) e uma linha pontilhada mostrando onde a divisão acontece.
-  // É uma aproximação visual (o vídeo aqui é o fonte cru, sem o corte/zoom
-  // final) — o resultado exato só aparece depois de renderizar.
-  splitLayout?: { region: SplitLayoutRegion; splitRatio: number; mode: SplitLayoutMode }
-  onSplitLayoutRegionMove?: (x: number, y: number) => void
+  // Layout split-screen (facecam) — renderiza os DOIS painéis já compostos
+  // de verdade (cada um com seu próprio cover-crop, preservando proporção,
+  // igual o ffmpeg faz) em vez de só um retângulo por cima do vídeo cru.
+  // Sem round-trip no servidor: atualiza instantaneamente ao arrastar/dar
+  // zoom, calculado 100% no cliente. Ainda é uma aproximação (o vídeo real
+  // no servidor pode diferir por 1-2px de arredondamento), mas é fiel o
+  // suficiente pra edição visual — o resultado exato só é garantido no
+  // render final.
+  splitLayout?: {
+    mode: SplitLayoutMode
+    splitRatio: number
+    facecamRegion: SplitLayoutRegion
+    facecamZoom: number
+    mainRegion: SplitLayoutRegion
+    mainZoom: number
+  }
+  onFacecamRegionMove?: (x: number, y: number) => void
+  onMainRegionMove?: (x: number, y: number) => void
   // Zoom/posição manual do vídeo principal — aproximação via CSS (scale +
   // translate no próprio elemento <video>, recortado pelo overflow-hidden
   // do container). O resultado exato só sai no render final do ffmpeg.
@@ -72,6 +84,109 @@ const CAPTION_POSITION_TOP: Record<CaptionStyle['position'], string> = {
   bottom: '85%',
 }
 
+interface CropBox { x: number; y: number; width: number; height: number }
+
+// Sub-retângulo efetivo depois do zoom — mesma matemática de
+// buildSplitLayoutFilters em ffmpeg.ts (corta um sub-retângulo menor e
+// centralizado dentro da região, na mesma proporção), só que em fração 0-1
+// em vez de pixels (não precisa saber a dimensão da fonte só pra isso).
+function effectiveCropBox(region: SplitLayoutRegion, zoom: number): CropBox {
+  const z = Math.max(1, zoom)
+  const width = region.width / z
+  const height = region.height / z
+  return { x: region.x + (region.width - width) / 2, y: region.y + (region.height - height) / 2, width, height }
+}
+
+// Calcula o estilo inline do <video> pra mostrar SÓ esse crop, preenchendo o
+// painel inteiro sem distorcer (equivalente a object-fit:cover, mas pra um
+// sub-retângulo arbitrário da fonte em vez do frame inteiro — object-fit
+// sozinho não faz isso). Precisa da dimensão real da fonte (videoWidth/
+// videoHeight) e do tamanho real do painel em pixels (via ResizeObserver).
+function coverCropVideoStyle(crop: CropBox, srcW: number, srcH: number, panelW: number, panelH: number): React.CSSProperties {
+  if (!srcW || !srcH || !panelW || !panelH || crop.width <= 0 || crop.height <= 0) {
+    return { width: '100%', height: '100%', objectFit: 'cover' }
+  }
+  const cropPxW = crop.width * srcW
+  const cropPxH = crop.height * srcH
+  const displayScale = Math.max(panelW / cropPxW, panelH / cropPxH)
+  const scaledW = srcW * displayScale
+  const scaledH = srcH * displayScale
+  const cx = (crop.x + crop.width / 2) * srcW
+  const cy = (crop.y + crop.height / 2) * srcH
+  return {
+    position: 'absolute',
+    width: `${scaledW}px`,
+    height: `${scaledH}px`,
+    left: `${panelW / 2 - cx * displayScale}px`,
+    top: `${panelH / 2 - cy * displayScale}px`,
+    maxWidth: 'none',
+  }
+}
+
+// Painel individual do layout split-screen — vídeo cropado + alça de
+// arraste que cobre o painel inteiro (arrastar move a região no vídeo
+// fonte, na direção oposta ao movimento do mouse — "arrastar o conteúdo",
+// igual editor de foto/crop: arrastar pra direita revela conteúdo mais à
+// esquerda da fonte).
+function SplitPanel({
+  videoRef, videoSrc, heightPercent, crop, srcSize, panelSize, label, muted, draggable, dragging, onDragStart, onPanelResize, onTimeUpdate, onError,
+}: {
+  videoRef: React.RefObject<HTMLVideoElement>
+  videoSrc: string
+  heightPercent: number
+  crop: CropBox
+  srcSize: { width: number; height: number }
+  panelSize: { width: number; height: number }
+  label: string
+  muted: boolean
+  draggable: boolean
+  dragging: boolean
+  onDragStart: (clientX: number, clientY: number) => void
+  onPanelResize: (size: { width: number; height: number }) => void
+  onTimeUpdate?: () => void
+  onError?: () => void
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect
+      onPanelResize({ width, height })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div ref={panelRef} className="relative overflow-hidden bg-black" style={{ height: `${heightPercent}%` }}>
+      {/* loadedmetadata é escutado via addEventListener direto no ref (ver
+          video-preview-player.tsx) — não duplica aqui como prop React. */}
+      <video
+        ref={videoRef}
+        src={videoSrc}
+        muted={muted}
+        playsInline
+        onTimeUpdate={onTimeUpdate}
+        onError={onError}
+        style={coverCropVideoStyle(crop, srcSize.width, srcSize.height, panelSize.width, panelSize.height)}
+      />
+      {draggable && (
+        <div
+          className={`absolute inset-0 cursor-move ${dragging ? 'outline outline-2 outline-violet-400' : ''}`}
+          onMouseDown={(e) => { e.preventDefault(); onDragStart(e.clientX, e.clientY) }}
+          onTouchStart={(e) => { const t = e.touches[0]; if (t) onDragStart(t.clientX, t.clientY) }}
+        />
+      )}
+      <span className="absolute top-1.5 left-1.5 text-[10px] text-white/60 bg-black/50 px-1.5 py-0.5 rounded pointer-events-none">
+        {label}
+      </span>
+    </div>
+  )
+}
+
 // Overlays/legendas foram definidos pensando num frame de referência de
 // 1080px de largura (mesma convenção usada em lib/ffmpeg.ts ao queimar o
 // vídeo final) — medir a largura real do player via ResizeObserver e
@@ -92,7 +207,8 @@ export function VideoPreviewPlayer({
   captionStyle,
   onOverlayMove,
   splitLayout,
-  onSplitLayoutRegionMove,
+  onFacecamRegionMove,
+  onMainRegionMove,
   transform,
   layers,
   selectedLayerId,
@@ -105,12 +221,18 @@ export function VideoPreviewPlayer({
   const initializedRef = useRef(false)
   const [scale, setScale] = useState(1)
   const [draggingId, setDraggingId] = useState<string | null>(null)
-  // Offset entre o ponto onde o usuário clicou e o canto superior-esquerdo
-  // do retângulo, em fração 0-1 — sem isso, o retângulo "pularia" pro
-  // cursor no instante do clique em vez de simplesmente se mover junto.
-  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null)
-  const [draggingRegion, setDraggingRegion] = useState(false)
   const [videoError, setVideoError] = useState('')
+
+  // Layout split-screen: dois <video> (um por painel, mesma fonte) — o
+  // painel principal toca com áudio (é o "condutor" de play/pause/tempo), o
+  // da facecam fica mudo (senão tocaria o mesmo áudio duas vezes, ecoando).
+  const splitMainVideoRef = useRef<HTMLVideoElement>(null)
+  const splitFacecamVideoRef = useRef<HTMLVideoElement>(null)
+  const [srcSize, setSrcSize] = useState({ width: 0, height: 0 })
+  const [mainPanelSize, setMainPanelSize] = useState({ width: 0, height: 0 })
+  const [facecamPanelSize, setFacecamPanelSize] = useState({ width: 0, height: 0 })
+  const [draggingRegionWhich, setDraggingRegionWhich] = useState<'facecam' | 'main' | null>(null)
+  const regionDragRef = useRef<{ which: 'facecam' | 'main'; clientX: number; clientY: number; regionX: number; regionY: number; displayScale: number } | null>(null)
 
   // Manipulação direta da camada de vídeo — mover (arrastar o corpo) ou dar
   // zoom (arrastar um canto, ao redor do centro do quadro). Cada modo grava
@@ -164,6 +286,41 @@ export function VideoPreviewPlayer({
     else video.pause()
   }, [playing])
 
+  // As mesmas 3 responsabilidades acima (posição inicial, seek, play/pause),
+  // só que pros DOIS vídeos do layout split-screen em vez do vídeo único —
+  // ambos tocam/pausam/buscam juntos, sempre sincronizados.
+  useEffect(() => {
+    if (!splitLayout) return
+    // Cada <video> só dispara loadedmetadata uma vez por carregamento —
+    // sem precisar de guarda compartilhada, cada um busca seu próprio
+    // clipStart quando estiver pronto (os dois, não só o primeiro a avisar).
+    const videos = [splitMainVideoRef.current, splitFacecamVideoRef.current].filter((v): v is HTMLVideoElement => !!v)
+    const handlers = videos.map((v) => {
+      const handler = () => {
+        v.currentTime = clipStart
+        if (v.videoWidth && v.videoHeight) setSrcSize({ width: v.videoWidth, height: v.videoHeight })
+      }
+      v.addEventListener('loadedmetadata', handler)
+      return { v, handler }
+    })
+    return () => handlers.forEach(({ v, handler }) => v.removeEventListener('loadedmetadata', handler))
+  }, [splitLayout, clipStart])
+
+  useEffect(() => {
+    if (!splitLayout || !seekRequest) return
+    const time = clipStart + Math.max(0, seekRequest.time)
+    ;[splitMainVideoRef.current, splitFacecamVideoRef.current].forEach((v) => { if (v) v.currentTime = time })
+  }, [splitLayout, seekRequest, clipStart])
+
+  useEffect(() => {
+    if (!splitLayout) return
+    ;[splitMainVideoRef.current, splitFacecamVideoRef.current].forEach((v) => {
+      if (!v) return
+      if (playing) v.play().catch(() => {})
+      else v.pause()
+    })
+  }, [splitLayout, playing])
+
   // Arrastar o overlay direto no preview — mais intuitivo que só os sliders
   // X/Y do painel. Ouve mousemove/mouseup na window (não só no elemento)
   // porque o cursor sai da caixa do texto facilmente durante o arraste.
@@ -196,26 +353,31 @@ export function VideoPreviewPlayer({
     }
   }, [draggingId, onOverlayMove])
 
-  // Arrastar o retângulo da facecam — mantém largura/altura fixas (só o
-  // painel de campos numéricos redimensiona), igual decidido: arrastar move,
-  // campos ajustam tamanho.
+  // Arrastar o CONTEÚDO dentro do painel (facecam ou principal) — desloca a
+  // região na direção OPOSTA ao movimento do mouse (arrastar pra direita
+  // revela conteúdo mais à esquerda da fonte), igual editor de foto/crop.
+  // Largura/altura da região ficam fixas (só os campos numéricos mudam
+  // tamanho), mesma decisão de antes: arrastar move, campos redimensionam.
   useEffect(() => {
-    if (!draggingRegion || !onSplitLayoutRegionMove || !dragOffset || !splitLayout) return
+    if (!draggingRegionWhich || !splitLayout) return
 
     const handleMove = (clientX: number, clientY: number) => {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const { width, height } = splitLayout.region
-      const x = Math.min(1 - width, Math.max(0, (clientX - rect.left) / rect.width - dragOffset.dx))
-      const y = Math.min(1 - height, Math.max(0, (clientY - rect.top) / rect.height - dragOffset.dy))
-      onSplitLayoutRegionMove(x, y)
+      const start = regionDragRef.current
+      if (!start || !srcSize.width || !srcSize.height || start.displayScale <= 0) return
+      const region = start.which === 'facecam' ? splitLayout.facecamRegion : splitLayout.mainRegion
+      const deltaSourceX = -(clientX - start.clientX) / start.displayScale / srcSize.width
+      const deltaSourceY = -(clientY - start.clientY) / start.displayScale / srcSize.height
+      const x = Math.min(1 - region.width, Math.max(0, start.regionX + deltaSourceX))
+      const y = Math.min(1 - region.height, Math.max(0, start.regionY + deltaSourceY))
+      if (start.which === 'facecam') onFacecamRegionMove?.(x, y)
+      else onMainRegionMove?.(x, y)
     }
     const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY)
     const onTouchMove = (e: TouchEvent) => {
       const touch = e.touches[0]
       if (touch) handleMove(touch.clientX, touch.clientY)
     }
-    const stopDragging = () => { setDraggingRegion(false); setDragOffset(null) }
+    const stopDragging = () => { setDraggingRegionWhich(null); regionDragRef.current = null }
 
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', stopDragging)
@@ -227,7 +389,7 @@ export function VideoPreviewPlayer({
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchend', stopDragging)
     }
-  }, [draggingRegion, dragOffset, onSplitLayoutRegionMove, splitLayout])
+  }, [draggingRegionWhich, splitLayout, srcSize, onFacecamRegionMove, onMainRegionMove])
 
   // Arrastar/dar zoom na camada de vídeo — mesmo idioma dos dois blocos
   // acima (useState local + listeners globais enquanto o arraste durar).
@@ -299,13 +461,23 @@ export function VideoPreviewPlayer({
     setDraggingLayer({ id: videoLayer.id, mode: 'scale' })
   }
 
-  const startDraggingRegion = (clientX: number, clientY: number) => {
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect || !splitLayout) return
-    const px = (clientX - rect.left) / rect.width
-    const py = (clientY - rect.top) / rect.height
-    setDragOffset({ dx: px - splitLayout.region.x, dy: py - splitLayout.region.y })
-    setDraggingRegion(true)
+  // Início do arraste de uma região (facecam ou principal) — grava a
+  // "escala de exibição" atual do painel (quanto o vídeo fonte está
+  // ampliado dentro dele) pra converter o delta do mouse em fração da
+  // fonte durante o arraste (ver useEffect acima).
+  const startRegionDrag = (which: 'facecam' | 'main', clientX: number, clientY: number) => {
+    if (!splitLayout || !srcSize.width || !srcSize.height) return
+    const region = which === 'facecam' ? splitLayout.facecamRegion : splitLayout.mainRegion
+    const zoom = which === 'facecam' ? splitLayout.facecamZoom : splitLayout.mainZoom
+    const panelSize = which === 'facecam' ? facecamPanelSize : mainPanelSize
+    if (!panelSize.width || !panelSize.height) return
+    const crop = effectiveCropBox(region, zoom)
+    const cropPxW = crop.width * srcSize.width
+    const cropPxH = crop.height * srcSize.height
+    if (cropPxW <= 0 || cropPxH <= 0) return
+    const displayScale = Math.max(panelSize.width / cropPxW, panelSize.height / cropPxH)
+    regionDragRef.current = { which, clientX, clientY, regionX: region.x, regionY: region.y, displayScale }
+    setDraggingRegionWhich(which)
   }
 
   const handleTimeUpdate = () => {
@@ -318,6 +490,35 @@ export function VideoPreviewPlayer({
       return
     }
     onTimeUpdate(Math.max(0, video.currentTime - clipStart))
+  }
+
+  // Mesma lógica de handleTimeUpdate, só que pro vídeo "condutor" do layout
+  // split-screen (o painel principal, que também carrega o áudio) — pausar
+  // ele já pausa os dois juntos via o useEffect de `playing` acima.
+  const handleSplitMainTimeUpdate = () => {
+    const video = splitMainVideoRef.current
+    if (!video) return
+    if (video.currentTime >= clipEnd) {
+      onPlayingChange(false)
+      onTimeUpdate(clipEnd - clipStart)
+      return
+    }
+    onTimeUpdate(Math.max(0, video.currentTime - clipStart))
+  }
+
+  // O <video> não expõe o corpo da resposta HTTP — refaz a mesma requisição
+  // só pra ler a mensagem de erro real da API (ex.: "Vídeo não encontrado")
+  // em vez de deixar tela preta sem explicação. Compartilhado entre o vídeo
+  // único e os dois painéis do layout split-screen (mesma fonte, mesmo erro
+  // possível nos dois casos).
+  const reportVideoError = async () => {
+    try {
+      const res = await fetch(videoSrc)
+      const body = await res.json().catch(() => null)
+      setVideoError(body?.error || `Não foi possível carregar o vídeo (HTTP ${res.status}).`)
+    } catch {
+      setVideoError('Não foi possível carregar o vídeo. Verifique sua conexão e tente recarregar a página.')
+    }
   }
 
   const visibleOverlays = overlays.filter((o) => currentTime >= o.startTime && currentTime <= o.endTime)
@@ -340,32 +541,57 @@ export function VideoPreviewPlayer({
         className="relative w-full bg-black rounded-2xl overflow-hidden"
         style={{ aspectRatio, maxHeight: 640 }}
       >
-      <video
-        ref={videoRef}
-        src={videoSrc}
-        className="w-full h-full object-contain bg-black"
-        style={
-          previewTransform
-            ? { transform: `scale(${previewTransform.zoom}) translate(${previewTransform.positionX * (previewTransform.zoom - 1) * 50}%, ${previewTransform.positionY * (previewTransform.zoom - 1) * 50}%)` }
-            : undefined
-        }
-        onTimeUpdate={handleTimeUpdate}
-        onError={async () => {
-          // O <video> não expõe o corpo da resposta HTTP — refaz a mesma
-          // requisição só pra ler a mensagem de erro real da API (ex.:
-          // "Vídeo não encontrado") em vez de deixar tela preta sem explicação.
-          try {
-            const res = await fetch(videoSrc)
-            const body = await res.json().catch(() => null)
-            setVideoError(body?.error || `Não foi possível carregar o vídeo (HTTP ${res.status}).`)
-          } catch {
-            setVideoError('Não foi possível carregar o vídeo. Verifique sua conexão e tente recarregar a página.')
+      {splitLayout ? (
+        // Layout split-screen: os dois painéis já compostos de verdade,
+        // cada um arrastável independentemente — sem linha divisória
+        // (a borda entre os dois <div> já delimita visualmente, sem
+        // precisar de um traço por cima) e sem round-trip no servidor pra
+        // ver o resultado (tudo calculado no cliente, atualiza na hora).
+        <div className="absolute inset-0 flex flex-col">
+          {(splitLayout.mode === 'FACECAM_TOP_MAIN_BOTTOM' ? (['facecam', 'main'] as const) : (['main', 'facecam'] as const)).map((which) => {
+            const isFacecam = which === 'facecam'
+            const region = isFacecam ? splitLayout.facecamRegion : splitLayout.mainRegion
+            const zoom = isFacecam ? splitLayout.facecamZoom : splitLayout.mainZoom
+            const isTop = (which === 'facecam') === (splitLayout.mode === 'FACECAM_TOP_MAIN_BOTTOM')
+            const heightPercent = (isTop ? splitLayout.splitRatio : 1 - splitLayout.splitRatio) * 100
+            return (
+              <SplitPanel
+                key={which}
+                videoRef={isFacecam ? splitFacecamVideoRef : splitMainVideoRef}
+                videoSrc={videoSrc}
+                heightPercent={heightPercent}
+                crop={effectiveCropBox(region, zoom)}
+                srcSize={srcSize}
+                panelSize={isFacecam ? facecamPanelSize : mainPanelSize}
+                label={isFacecam ? 'Facecam' : 'Vídeo principal'}
+                muted={isFacecam}
+                draggable={!!(isFacecam ? onFacecamRegionMove : onMainRegionMove)}
+                dragging={draggingRegionWhich === which}
+                onDragStart={(x, y) => startRegionDrag(which, x, y)}
+                onPanelResize={isFacecam ? setFacecamPanelSize : setMainPanelSize}
+                onTimeUpdate={isFacecam ? undefined : handleSplitMainTimeUpdate}
+                onError={reportVideoError}
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          src={videoSrc}
+          className="w-full h-full object-contain bg-black"
+          style={
+            previewTransform
+              ? { transform: `scale(${previewTransform.zoom}) translate(${previewTransform.positionX * (previewTransform.zoom - 1) * 50}%, ${previewTransform.positionY * (previewTransform.zoom - 1) * 50}%)` }
+              : undefined
           }
-        }}
-        playsInline
-      />
+          onTimeUpdate={handleTimeUpdate}
+          onError={reportVideoError}
+          playsInline
+        />
+      )}
 
-      {videoLayer && onLayerTransformChange && (
+      {!splitLayout && videoLayer && onLayerTransformChange && (
         <TransformBox
           selected={layerSelected}
           onSelect={() => onSelectLayer?.(videoLayer.id)}
@@ -398,31 +624,6 @@ export function VideoPreviewPlayer({
         </div>
       ))}
 
-      {splitLayout && (
-        <>
-          {/* Linha pontilhada mostrando onde a divisão entre os dois painéis
-              acontece — só uma referência aproximada (o vídeo aqui é o fonte
-              cru, o corte/zoom final só aparece depois de renderizar). */}
-          <div
-            className="absolute left-0 right-0 border-t-2 border-dashed border-white/50 pointer-events-none"
-            style={{ top: `${splitLayout.splitRatio * 100}%` }}
-          />
-          <div
-            onMouseDown={onSplitLayoutRegionMove ? (e) => { e.preventDefault(); startDraggingRegion(e.clientX, e.clientY) } : undefined}
-            onTouchStart={onSplitLayoutRegionMove ? (e) => { const t = e.touches[0]; if (t) startDraggingRegion(t.clientX, t.clientY) } : undefined}
-            className={`absolute border-2 border-violet-400 bg-violet-500/20 ${onSplitLayoutRegionMove ? 'cursor-move' : 'pointer-events-none'} ${draggingRegion ? 'outline outline-2 outline-violet-300' : ''}`}
-            style={{
-              left: `${splitLayout.region.x * 100}%`,
-              top: `${splitLayout.region.y * 100}%`,
-              width: `${splitLayout.region.width * 100}%`,
-              height: `${splitLayout.region.height * 100}%`,
-              zIndex: 10,
-            }}
-          >
-            <span className="absolute -top-5 left-0 text-[10px] text-violet-300 whitespace-nowrap">Facecam</span>
-          </div>
-        </>
-      )}
 
       {activeWord && (
         <div
@@ -445,12 +646,12 @@ export function VideoPreviewPlayer({
           <p className="text-sm font-medium text-red-400">Vídeo não carregou</p>
           <p className="text-xs text-white/50">{videoError}</p>
         </div>
-      ) : !playing && !(videoLayer && onLayerTransformChange) && (
+      ) : !playing && !(videoLayer && onLayerTransformChange) && !splitLayout && (
         // Só mostra o botão de play gigante cobrindo a tela toda quando NÃO
-        // existe uma camada de vídeo selecionável (senão ele bloquearia o
-        // clique de seleção/arraste — TransformBox cobre a mesma área com
-        // z-index maior). Com a camada, dá pra tocar/pausar pelo botão da
-        // barra de transporte embaixo do preview.
+        // existe uma camada de vídeo selecionável nem layout split-screen
+        // ativo (senão ele bloquearia o clique de seleção/arraste dos
+        // painéis, que também cobrem a área inteira). Com camada/layout, dá
+        // pra tocar/pausar pelo botão da barra de transporte embaixo do preview.
         <button
           onClick={() => onPlayingChange(true)}
           className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"

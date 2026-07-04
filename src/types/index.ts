@@ -210,7 +210,17 @@ export interface SplitLayoutConfig {
   // padrão (canto inferior direito) — usado pra mostrar aviso de fallback
   // em vez de deixar o usuário achar que aquilo já foi detectado de verdade.
   facecamConfirmed?: boolean
+  // Crop/zoom do painel PRINCIPAL — mesmo conceito de facecamRegion/
+  // facecamZoom, só que pro vídeo de baixo (ou de cima, dependendo do modo).
+  // Ausente = comportamento de sempre (frame inteiro, sem zoom, cover-crop
+  // centralizado) — aditivo, não quebra configs salvas antes disso existir.
+  mainRegion?: SplitLayoutRegion
+  mainZoom?: number
 }
+
+// Região "frame inteiro" — usada como fallback quando mainRegion não foi
+// definido ainda (configs salvas antes dessa função existir).
+export const FULL_FRAME_REGION: SplitLayoutRegion = { x: 0, y: 0, width: 1, height: 1 }
 
 export const SPLIT_LAYOUT_LABELS: Record<SplitLayoutMode, string> = {
   MAIN_TOP_FACECAM_BOTTOM: 'Principal em cima + Facecam com zoom embaixo',
@@ -225,6 +235,8 @@ export const DEFAULT_SPLIT_LAYOUT_CONFIG: SplitLayoutConfig = {
   facecamRegion: { x: 0.7, y: 0.65, width: 0.28, height: 0.28 },
   facecamZoom: 1.3,
   splitRatio: 0.5,
+  mainRegion: { ...FULL_FRAME_REGION },
+  mainZoom: 1,
 }
 
 export const DEFAULT_SPLIT_RATIO_BY_MODE: Record<SplitLayoutMode, number> = {

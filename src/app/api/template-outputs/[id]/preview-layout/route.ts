@@ -26,6 +26,8 @@ const bodySchema = z.object({
     facecamZoom: z.number().min(1).max(4),
     splitRatio: z.number().min(0.2).max(0.8),
     facecamConfirmed: z.boolean().optional(),
+    mainRegion: regionSchema.optional(),
+    mainZoom: z.number().min(1).max(4).optional(),
   }),
 })
 

@@ -15,7 +15,7 @@ import { CanvasFormatSelector } from './canvas-format-selector'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
 import { Button } from '@/components/ui/button'
 import type { EditorState, ClipFormat, FitMode, SplitLayoutMode, SplitLayoutConfig, EditorLayer } from '@/types'
-import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE, DEFAULT_EDITOR_CANVAS, CANVAS_PRESET_TO_CLIP_FORMAT } from '@/types'
+import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE, DEFAULT_EDITOR_CANVAS, CANVAS_PRESET_TO_CLIP_FORMAT, FULL_FRAME_REGION } from '@/types'
 
 interface Props {
   clip: { id: string; title: string; startTime: number; endTime: number }
@@ -198,12 +198,26 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
           }
           splitLayout={
             editorState.layoutMode && editorState.layoutConfig
-              ? { region: editorState.layoutConfig.facecamRegion, splitRatio: editorState.layoutConfig.splitRatio, mode: editorState.layoutMode }
+              ? {
+                  mode: editorState.layoutMode,
+                  splitRatio: editorState.layoutConfig.splitRatio,
+                  facecamRegion: editorState.layoutConfig.facecamRegion,
+                  facecamZoom: editorState.layoutConfig.facecamZoom,
+                  mainRegion: editorState.layoutConfig.mainRegion ?? FULL_FRAME_REGION,
+                  mainZoom: editorState.layoutConfig.mainZoom ?? 1,
+                }
               : undefined
           }
-          onSplitLayoutRegionMove={(x, y) =>
+          onFacecamRegionMove={(x, y) =>
             setEditorState((s) =>
               s.layoutConfig ? { ...s, layoutConfig: { ...s.layoutConfig, facecamRegion: { ...s.layoutConfig.facecamRegion, x, y }, facecamConfirmed: true } } : s
+            )
+          }
+          onMainRegionMove={(x, y) =>
+            setEditorState((s) =>
+              s.layoutConfig
+                ? { ...s, layoutConfig: { ...s.layoutConfig, mainRegion: { ...(s.layoutConfig.mainRegion ?? FULL_FRAME_REGION), x, y } } }
+                : s
             )
           }
           transform={editorState.transform}
