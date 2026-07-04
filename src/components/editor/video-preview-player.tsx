@@ -214,11 +214,15 @@ export function VideoPreviewPlayer({
   const activeWord = captions.flatMap((s) => s.words).find((w) => currentTime >= w.start && currentTime <= w.end)
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full bg-black rounded-xl overflow-hidden mx-auto"
-      style={{ aspectRatio: '9 / 16', maxHeight: 640 }}
-    >
+    // Wrapper só pra moldura (gradiente sutil + sombra) — containerRef fica
+    // no elemento de dentro, sem padding/borda, pra não desalinhar a
+    // matemática de coordenadas do arraste (getBoundingClientRect).
+    <div className="mx-auto rounded-2xl bg-gradient-to-b from-white/10 to-white/0 p-px shadow-2xl shadow-black/40" style={{ maxHeight: 642 }}>
+      <div
+        ref={containerRef}
+        className="relative w-full bg-black rounded-2xl overflow-hidden"
+        style={{ aspectRatio: '9 / 16', maxHeight: 640 }}
+      >
       <video
         ref={videoRef}
         src={videoSrc}
@@ -299,11 +303,12 @@ export function VideoPreviewPlayer({
           className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"
           aria-label="Reproduzir"
         >
-          <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
-            <div className="w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-black ml-1" />
+          <div className="w-16 h-16 rounded-full bg-white/95 shadow-brand-lg flex items-center justify-center transition-transform hover:scale-105">
+            <div className="w-0 h-0 border-y-[11px] border-y-transparent border-l-[18px] border-l-black ml-1" />
           </div>
         </button>
       )}
+      </div>
     </div>
   )
 }

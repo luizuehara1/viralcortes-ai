@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, Loader2, LayoutTemplate } from 'lucide-react'
+import { ArrowLeft, Sparkles, Type, Captions, Wand2, Instagram, Youtube, LayoutTemplate } from 'lucide-react'
 import { VideoPreviewPlayer } from './video-preview-player'
 import { TimelineScrubber } from './timeline-scrubber'
 import { TextOverlaysPanel } from './text-overlays-panel'
@@ -10,6 +10,8 @@ import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { ScheduleModal } from '@/components/social/schedule-modal'
+import { Button } from '@/components/ui/button'
+import { TabButton } from '@/components/ui/tab-button'
 import type { EditorState, SplitLayoutConfig } from '@/types'
 
 interface Props {
@@ -113,28 +115,15 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
           <span className="text-xs text-white/30 w-14">
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
-          <button
-            onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-          >
-            <Instagram className="w-4 h-4" />
+          <Button onClick={() => setSchedulePlatform('INSTAGRAM_REELS')} variant="secondary" icon={<Instagram className="w-4 h-4" />}>
             Instagram
-          </button>
-          <button
-            onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-          >
-            <Youtube className="w-4 h-4" />
+          </Button>
+          <Button onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')} variant="secondary" icon={<Youtube className="w-4 h-4" />}>
             YouTube
-          </button>
-          <button
-            onClick={applyEdits}
-            disabled={rendering}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-all"
-          >
-            {rendering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          </Button>
+          <Button onClick={applyEdits} loading={rendering} icon={<Sparkles className="w-4 h-4" />}>
             {rendering ? 'Aplicando...' : 'Aplicar edições'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -264,19 +253,5 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
         />
       )}
     </div>
-  )
-}
-
-function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-        active ? 'bg-violet-600 text-white' : 'text-white/50 hover:text-white/80'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   )
 }

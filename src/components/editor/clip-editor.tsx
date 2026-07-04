@@ -11,6 +11,8 @@ import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
+import { Button } from '@/components/ui/button'
+import { TabButton } from '@/components/ui/tab-button'
 import type { EditorState, ClipFormat, FitMode, SplitLayoutMode, SplitLayoutConfig } from '@/types'
 import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
 
@@ -119,16 +121,14 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-white/30 w-14">
+          <span className="text-xs text-white/30 w-14 flex items-center gap-1">
+            {saveState === 'saving' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+            {saveState === 'saved' && <span className="w-1.5 h-1.5 rounded-full bg-neon-500" />}
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-all"
-          >
-            <Sparkles className="w-4 h-4" />
+          <Button onClick={() => setPickerOpen(true)} icon={<Sparkles className="w-4 h-4" />}>
             Gerar corte com essas edições
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -237,19 +237,5 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
         <FormatPickerModal submitting={rendering} onClose={() => setPickerOpen(false)} onConfirm={requestRender} />
       )}
     </div>
-  )
-}
-
-function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-        active ? 'bg-violet-600 text-white' : 'text-white/50 hover:text-white/80'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   )
 }

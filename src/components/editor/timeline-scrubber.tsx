@@ -26,9 +26,9 @@ export function TimelineScrubber({ duration, currentTime, onSeek }: Props) {
         if (e.buttons === 1) handleSeek(e)
       }}
     >
-      <div className="absolute inset-y-0 left-0 bg-violet-500 rounded-full transition-[width]" style={{ width: `${ratio * 100}%` }} />
+      <div className="absolute inset-y-0 left-0 bg-gradient-brand rounded-full transition-[width]" style={{ width: `${ratio * 100}%` }} />
       <div
-        className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow group-hover:scale-110 transition-transform"
+        className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-brand group-hover:scale-125 transition-transform"
         style={{ left: `calc(${ratio * 100}% - 7px)` }}
       />
     </div>
