@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { Scissors, LayoutDashboard, FolderOpen, LogOut, Wand2, Link2, Menu, X } from 'lucide-react'
+import { Scissors, LayoutDashboard, FolderOpen, LogOut, Wand2, Link2, Menu, X, Clapperboard, CalendarClock } from 'lucide-react'
 
 interface Props {
   user: { name?: string; email?: string; image?: string }
@@ -13,7 +13,9 @@ interface Props {
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projetos', icon: FolderOpen },
+  { href: '/editor', label: 'Editor', icon: Clapperboard },
   { href: '/template-studio', label: 'Template Studio', icon: Wand2 },
+  { href: '/agendamentos', label: 'Agendamentos', icon: CalendarClock },
   { href: '/integrations', label: 'Integrações', icon: Link2 },
 ]
 

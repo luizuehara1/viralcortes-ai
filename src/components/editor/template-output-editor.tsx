@@ -9,9 +9,9 @@ import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { PropertiesPanel } from './properties-panel'
+import { EditorToolRail } from './editor-tool-rail'
 import { ScheduleModal } from '@/components/social/schedule-modal'
 import { Button } from '@/components/ui/button'
-import { TabButton } from '@/components/ui/tab-button'
 import type { EditorState, SplitLayoutConfig, EditorLayer } from '@/types'
 
 interface Props {
@@ -114,8 +114,8 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-lg font-bold leading-tight">Editar resultado do template</h1>
-            <p className="text-xs text-white/40">Editor de vídeo · {duration.toFixed(0)}s</p>
+            <h1 className="text-lg font-bold leading-tight">Editor de vídeo</h1>
+            <p className="text-xs text-white/40">Edite camadas, cortes, legendas, efeitos e exporte seu corte · {duration.toFixed(0)}s</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -123,13 +123,13 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
             {saveState === 'saving' ? 'Salvando...' : saveState === 'saved' ? 'Salvo' : ''}
           </span>
           <Button onClick={() => setSchedulePlatform('INSTAGRAM_REELS')} variant="secondary" icon={<Instagram className="w-4 h-4" />}>
-            Instagram
+            Agendar Instagram
           </Button>
           <Button onClick={() => setSchedulePlatform('YOUTUBE_SHORTS')} variant="secondary" icon={<Youtube className="w-4 h-4" />}>
-            YouTube
+            Agendar YouTube
           </Button>
           <Button onClick={applyEdits} loading={rendering} icon={<Sparkles className="w-4 h-4" />}>
-            {rendering ? 'Aplicando...' : 'Aplicar edições'}
+            {rendering ? 'Renderizando...' : 'Renderizar'}
           </Button>
         </div>
       </div>
@@ -137,18 +137,30 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
       {renderError && <p className="text-sm text-red-400">{renderError}</p>}
       {appliedAt && !renderError && (
         <div className="flex items-center gap-3 text-sm text-emerald-400 bg-emerald-500/10 rounded-xl px-4 py-2.5">
-          <span>Edições aplicadas! Baixe ou agende quando quiser.</span>
+          <span>Renderizado! Exporte ou agende quando quiser.</span>
           <a
             href={`/api/template-outputs/${output.id}/stream`}
             download
             className="underline hover:text-emerald-300"
           >
-            Baixar vídeo
+            Exportar (baixar)
           </a>
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
+      <div className="grid lg:grid-cols-[68px_minmax(0,1fr)_360px] gap-4">
+        <EditorToolRail
+          active={tab}
+          onSelect={(id) => setTab(id as Tab)}
+          tools={[
+            { id: 'captions', icon: <Captions className="w-4 h-4" />, label: 'Legendas' },
+            { id: 'text', icon: <Type className="w-4 h-4" />, label: 'Texto' },
+            { id: 'effects', icon: <Wand2 className="w-4 h-4" />, label: 'Efeitos' },
+            { id: 'layout', icon: <LayoutTemplate className="w-4 h-4" />, label: 'Layout' },
+            { id: 'transform', icon: <Move3d className="w-4 h-4" />, label: 'Transf.' },
+          ]}
+        />
+
         <VideoEditorCanvas
           duration={duration}
           onSeek={seekTo}
@@ -188,14 +200,6 @@ export function TemplateOutputEditor({ output, initialEditorState, lastSplitLayo
         />
 
         <div className="glass rounded-2xl p-4 space-y-4 h-fit">
-          <div className="flex gap-1.5 p-1 rounded-xl bg-white/5">
-            <TabButton active={tab === 'captions'} onClick={() => setTab('captions')} icon={<Captions className="w-3.5 h-3.5" />} label="Legendas" />
-            <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
-            <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
-            <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
-            <TabButton active={tab === 'transform'} onClick={() => setTab('transform')} icon={<Move3d className="w-3.5 h-3.5" />} label="Transformar" />
-          </div>
-
           {tab === 'captions' && (
             <CaptionsPanel
               captionsEndpoint={`/api/template-outputs/${output.id}/captions`}

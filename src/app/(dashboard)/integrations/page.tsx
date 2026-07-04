@@ -3,7 +3,6 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { YoutubeConnectCard } from '@/components/integrations/youtube-connect-card'
 import { InstagramConnectCard } from '@/components/integrations/instagram-connect-card'
-import { ScheduledPostsList } from '@/components/social/scheduled-posts-list'
 
 interface Props {
   searchParams: { error?: string; connected?: string }
@@ -70,7 +69,9 @@ export default async function IntegrationsPage({ searchParams }: Props) {
 
       <YoutubeConnectCard initialAccount={serialize(youtube)} />
       <InstagramConnectCard initialAccount={serialize(instagram)} />
-      <ScheduledPostsList />
+      <p className="text-xs text-white/30 text-center">
+        Acompanhe suas publicações agendadas em <a href="/agendamentos" className="underline hover:text-white/50">Agendamentos</a>.
+      </p>
     </div>
   )
 }

@@ -540,7 +540,7 @@ export function TemplateStudioClient() {
                 className="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 font-medium transition-all flex items-center justify-center gap-2 text-sm"
               >
                 <Pencil className="w-3.5 h-3.5" />
-                Editar/Legendar
+                Editar no Editor
               </Link>
               <button
                 onClick={() => setSchedulePlatform('INSTAGRAM_REELS')}

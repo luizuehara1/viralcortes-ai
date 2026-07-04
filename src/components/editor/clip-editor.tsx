@@ -10,9 +10,9 @@ import { EffectsPanel } from './effects-panel'
 import { CaptionsPanel } from './captions-panel'
 import { LayoutPanel } from './layout-panel'
 import { PropertiesPanel } from './properties-panel'
+import { EditorToolRail } from './editor-tool-rail'
 import { FormatPickerModal } from '@/components/clips/format-picker-modal'
 import { Button } from '@/components/ui/button'
-import { TabButton } from '@/components/ui/tab-button'
 import type { EditorState, ClipFormat, FitMode, SplitLayoutMode, SplitLayoutConfig, EditorLayer } from '@/types'
 import { DEFAULT_SPLIT_LAYOUT_CONFIG, DEFAULT_SPLIT_RATIO_BY_MODE } from '@/types'
 
@@ -141,7 +141,7 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
           </Link>
           <div>
             <h1 className="text-lg font-bold leading-tight">{clip.title}</h1>
-            <p className="text-xs text-white/40">Editor de vídeo · {duration.toFixed(0)}s</p>
+            <p className="text-xs text-white/40">Edite camadas, cortes, legendas e efeitos · {duration.toFixed(0)}s</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -156,7 +156,19 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
+      <div className="grid lg:grid-cols-[68px_minmax(0,1fr)_360px] gap-4">
+        <EditorToolRail
+          active={tab}
+          onSelect={(id) => setTab(id as Tab)}
+          tools={[
+            { id: 'captions', icon: <Captions className="w-4 h-4" />, label: 'Legendas' },
+            { id: 'text', icon: <Type className="w-4 h-4" />, label: 'Texto' },
+            { id: 'effects', icon: <Wand2 className="w-4 h-4" />, label: 'Efeitos' },
+            { id: 'layout', icon: <LayoutTemplate className="w-4 h-4" />, label: 'Layout' },
+            { id: 'transform', icon: <Move3d className="w-4 h-4" />, label: 'Transf.' },
+          ]}
+        />
+
         <VideoEditorCanvas
           duration={duration}
           onSeek={seekTo}
@@ -196,14 +208,6 @@ export function ClipEditor({ clip, sourceVideoId, projectId, initialEditorState,
         />
 
         <div className="glass rounded-2xl p-4 space-y-4 h-fit">
-          <div className="flex gap-1.5 p-1 rounded-xl bg-white/5">
-            <TabButton active={tab === 'captions'} onClick={() => setTab('captions')} icon={<Captions className="w-3.5 h-3.5" />} label="Legendas" />
-            <TabButton active={tab === 'text'} onClick={() => setTab('text')} icon={<Type className="w-3.5 h-3.5" />} label="Texto" />
-            <TabButton active={tab === 'effects'} onClick={() => setTab('effects')} icon={<Wand2 className="w-3.5 h-3.5" />} label="Efeitos" />
-            <TabButton active={tab === 'layout'} onClick={() => setTab('layout')} icon={<LayoutTemplate className="w-3.5 h-3.5" />} label="Layout" />
-            <TabButton active={tab === 'transform'} onClick={() => setTab('transform')} icon={<Move3d className="w-3.5 h-3.5" />} label="Transformar" />
-          </div>
-
           {tab === 'captions' && (
             <CaptionsPanel
               captionsEndpoint={`/api/clips/${clip.id}/captions`}
