@@ -935,7 +935,15 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   // New (non-ORIGINAL) formats favor render speed (multiple formats may be
   // generated per clip) — ORIGINAL keeps its already-tuned settings
   // untouched. Env vars only override the non-ORIGINAL defaults.
-  const preset = isOriginal ? 'medium' : (process.env.FFMPEG_PRESET || 'veryfast')
+  //
+  // Exceção: fonte grande (ex. 4K) + preset 'medium' (lookahead maior, mais
+  // análise) já matou o worker com SIGKILL (OOM) num container de 1GB —
+  // ORIGINAL mantém a resolução nativa (isso não muda), mas cai pra
+  // 'veryfast' quando a fonte é maior que 1080p, exatamente pra evitar esse
+  // pico de memória. Custo: arquivo um pouco maior pro mesmo CRF.
+  const originalFrameSize = isOriginal ? await getFrameSize() : null
+  const isLargeSource = !!originalFrameSize && originalFrameSize.width * originalFrameSize.height > 1920 * 1080
+  const preset = isOriginal ? (isLargeSource ? 'veryfast' : 'medium') : (process.env.FFMPEG_PRESET || 'veryfast')
   const crf = isOriginal ? '20' : String(process.env.FFMPEG_CRF || '22')
   const audioBitrate = isOriginal ? '192k' : '160k'
   const threads = String(Math.max(1, Number(process.env.FFMPEG_THREADS) || 2))
