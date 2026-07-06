@@ -348,6 +348,12 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
   FEED_4_5:       { width: 1080, height: 1350 },
 }
 
+// Teto de resolução para o formato ORIGINAL — fontes acima disso (4K, 8K)
+// são reduzidas pra caber aqui (mantendo aspect ratio). Decodificar+codificar
+// nativo em 4K já causou SIGKILL (OOM) num container de 1GB.
+const MAX_ORIGINAL_WIDTH = 1920
+const MAX_ORIGINAL_HEIGHT = 1080
+
 // Zoom/posição manual do vídeo principal — generaliza o "cover crop" que o
 // fitMode COVER já faz (scale increase + crop centralizado): em zoom=1 e
 // position=0,0 o resultado é idêntico ao COVER de hoje. zoom>1 escala o
@@ -647,10 +653,18 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   if (hasSplitLayout || hasTransform || hasCrop) {
     // placeholder — sobrescrito abaixo, depois que getFrameSize existir.
   } else if (isOriginal) {
-    // Keeps the source aspect ratio untouched — no crop, no scale to a fixed
-    // canvas, no zoom. Only forces even width/height because H.264
-    // (yuv420p) requires both dimensions to be divisible by 2.
-    vfFilters = [`fps=${OUTPUT_FPS}`, 'scale=trunc(iw/2)*2:trunc(ih/2)*2', 'format=yuv420p']
+    // Keeps the source aspect ratio untouched — no crop, no zoom. Fontes
+    // acima de 1080p (ex. 4K) SÃO reduzidas: decodificar+codificar em 4K
+    // puro já matou o worker com SIGKILL (OOM) num container de 1GB, mesmo
+    // com preset mais leve — o pico de memória escala com resolução, não só
+    // com o preset. min(iw/ih, MAX) não faz nada pra fontes já <=1080p.
+    // Sempre força dimensões pares (H.264/yuv420p exige).
+    vfFilters = [
+      `fps=${OUTPUT_FPS}`,
+      `scale='min(${MAX_ORIGINAL_WIDTH},iw)':'min(${MAX_ORIGINAL_HEIGHT},ih)':force_original_aspect_ratio=decrease:flags=lanczos`,
+      'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+      'format=yuv420p',
+    ]
   } else {
     const { width, height } = FORMAT_DIMENSIONS[format]
     if (fitMode === 'COVER') {
@@ -695,7 +709,15 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
     if (cachedFrameSize) return cachedFrameSize
     if (isOriginal) {
       const meta = await getVideoMetadata(inputPath)
-      cachedFrameSize = { width: meta.width || 1280, height: meta.height || 720 }
+      const srcW = meta.width || 1280
+      const srcH = meta.height || 720
+      // Mesmo teto aplicado no filtro de scale acima — overlays/legendas
+      // precisam calcular posição contra o frame FINAL, não a fonte original.
+      const scale = Math.min(1, MAX_ORIGINAL_WIDTH / srcW, MAX_ORIGINAL_HEIGHT / srcH)
+      cachedFrameSize = {
+        width: Math.max(2, Math.round((srcW * scale) / 2) * 2),
+        height: Math.max(2, Math.round((srcH * scale) / 2) * 2),
+      }
     } else {
       cachedFrameSize = FORMAT_DIMENSIONS[format]
     }
@@ -936,14 +958,10 @@ export async function renderClip(opts: RenderClipOptions): Promise<void> {
   // generated per clip) — ORIGINAL keeps its already-tuned settings
   // untouched. Env vars only override the non-ORIGINAL defaults.
   //
-  // Exceção: fonte grande (ex. 4K) + preset 'medium' (lookahead maior, mais
-  // análise) já matou o worker com SIGKILL (OOM) num container de 1GB —
-  // ORIGINAL mantém a resolução nativa (isso não muda), mas cai pra
-  // 'veryfast' quando a fonte é maior que 1080p, exatamente pra evitar esse
-  // pico de memória. Custo: arquivo um pouco maior pro mesmo CRF.
-  const originalFrameSize = isOriginal ? await getFrameSize() : null
-  const isLargeSource = !!originalFrameSize && originalFrameSize.width * originalFrameSize.height > 1920 * 1080
-  const preset = isOriginal ? (isLargeSource ? 'veryfast' : 'medium') : (process.env.FFMPEG_PRESET || 'veryfast')
+  // ORIGINAL nunca decodifica+codifica acima de MAX_ORIGINAL_WIDTH x
+  // MAX_ORIGINAL_HEIGHT (ver scale acima) — por isso 'medium' aqui não é
+  // mais o risco de OOM que já foi com fontes 4K puras.
+  const preset = isOriginal ? 'medium' : (process.env.FFMPEG_PRESET || 'veryfast')
   const crf = isOriginal ? '20' : String(process.env.FFMPEG_CRF || '22')
   const audioBitrate = isOriginal ? '192k' : '160k'
   const threads = String(Math.max(1, Number(process.env.FFMPEG_THREADS) || 2))
