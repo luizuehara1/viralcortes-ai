@@ -34,6 +34,12 @@ async function processClipRender(job: Job) {
   // depende do exportMode 'clean'/'captioned' de sempre.
   const editorState = clip.editorState as EditorState | null
 
+  // O evento 'progress' do fluent-ffmpeg dispara muitas vezes por segundo —
+  // sem essa amostragem, cada tick vira um job.updateProgress() (escrita no
+  // Redis), inflando muito o número de comandos no Upstash por render.
+  let lastReportedProgress = -1
+  let lastReportedAt = 0
+
   await renderClip({
     inputPath: clip.sourceVideo.filePath,
     outputPath,
@@ -55,6 +61,12 @@ async function processClipRender(job: Job) {
     transform: editorState?.transform,
     layers: editorState?.layers,
     onProgress: async (progress) => {
+      const now = Date.now()
+      const changedEnough = progress - lastReportedProgress >= 5
+      const longEnough = now - lastReportedAt >= 3000
+      if (progress < 100 && !changedEnough && !longEnough) return
+      lastReportedProgress = progress
+      lastReportedAt = now
       await job.updateProgress(progress)
     },
   })

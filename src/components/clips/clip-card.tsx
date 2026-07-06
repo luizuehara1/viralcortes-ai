@@ -122,7 +122,15 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
 
+    // 10s em vez de 3s — reduz requisições redundantes enquanto o corte
+    // renderiza; pausa de vez quando a aba está em segundo plano.
+    const POLL_INTERVAL = 10000
+
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        if (!cancelled) timer = setTimeout(tick, POLL_INTERVAL)
+        return
+      }
       try {
         const res = await fetch(`/api/clips/${clip.id}`)
         if (cancelled) return
@@ -137,10 +145,10 @@ export function ClipCard({ clip, index, selectable, selected, onToggleSelect }: 
           }
         }
       } catch {}
-      if (!cancelled) timer = setTimeout(tick, 3000)
+      if (!cancelled) timer = setTimeout(tick, POLL_INTERVAL)
     }
 
-    timer = setTimeout(tick, 3000)
+    timer = setTimeout(tick, POLL_INTERVAL)
     return () => {
       cancelled = true
       clearTimeout(timer)

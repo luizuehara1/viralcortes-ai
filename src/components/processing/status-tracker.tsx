@@ -32,7 +32,9 @@ interface Props {
   onCompleted?: () => void
 }
 
-const POLL_INTERVAL = 3000
+// 12s em vez de 3s — cada tick é uma requisição no servidor (Postgres) por
+// aba aberta; não precisa ser tão granular pra uma barra de progresso.
+const POLL_INTERVAL = 12000
 // Generous threshold — some stages (chunked transcription of long videos)
 // can legitimately go a few minutes without an updatedAt change. This is
 // meant to catch a genuinely stuck job (e.g. worker not running), not to
@@ -67,6 +69,11 @@ export function StatusTracker({
     // resolves) instead of setInterval, so a slow response never piles up
     // concurrent requests against the server.
     const tick = async () => {
+      // Aba em segundo plano — pula a requisição desse ciclo, só reagenda.
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        if (!cancelled) timer = setTimeout(tick, POLL_INTERVAL)
+        return
+      }
       try {
         const res = await fetch(`/api/jobs/${sourceVideoId}`)
         if (cancelled) return
