@@ -68,6 +68,15 @@ async function processVideo(job: Job) {
   // 1. Extrair metadados
   const metadata = await getVideoMetadata(video.filePath)
   const isLongLive = metadata.duration >= LONG_LIVE_MODE_HOURS * 3600
+
+  // Sem faixa de áudio, o ffmpeg falha depois com um erro críptico ("Output
+  // file #0 does not contain any stream", já que -vn descarta o único
+  // stream que existia) — e sem áudio não tem como transcrever/gerar corte
+  // mesmo. Falha aqui, cedo, com uma mensagem que o usuário entende.
+  if (!metadata.hasAudio) {
+    throw new Error('Este vídeo não tem nenhuma faixa de áudio — não é possível gerar transcrição ou cortes sem áudio.')
+  }
+
   await prisma.sourceVideo.update({
     where: { id: sourceVideoId },
     // Limpa um errorMessage de uma tentativa anterior que falhou — esta

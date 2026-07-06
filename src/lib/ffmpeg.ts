@@ -25,6 +25,7 @@ export interface VideoMetadata {
   height: number
   fps: number
   bitrate: number
+  hasAudio: boolean
 }
 
 export function getVideoMetadata(filePath: string): Promise<VideoMetadata> {
@@ -32,6 +33,7 @@ export function getVideoMetadata(filePath: string): Promise<VideoMetadata> {
     ffmpeg.ffprobe(filePath, (err, data) => {
       if (err) return reject(err)
       const video = data.streams.find((s) => s.codec_type === 'video')
+      const hasAudio = data.streams.some((s) => s.codec_type === 'audio')
       const duration = data.format.duration ?? 0
       resolve({
         duration: Number(duration),
@@ -39,6 +41,7 @@ export function getVideoMetadata(filePath: string): Promise<VideoMetadata> {
         height: video?.height ?? 0,
         fps: eval(video?.r_frame_rate ?? '30') || 30,
         bitrate: Number(data.format.bit_rate ?? 0),
+        hasAudio,
       })
     })
   })
